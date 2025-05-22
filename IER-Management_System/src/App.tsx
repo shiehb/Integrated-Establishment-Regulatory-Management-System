@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { Switch, Route } from "wouter"
 import { Suspense } from "react"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -16,43 +17,52 @@ import ProfileEditPage from "@/pages/profile/edit"
 import NotFound from "@/pages/not-found"
 
 function App() {
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (isLoading) {
+    return <LoadingWave message="Loading..." />
+  }
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <Suspense fallback={<LoadingWave logoUrl="/placeholder.svg?height=48&width=48" className="h-screen" />}>
+          <Suspense fallback={<LoadingWave />}>
             <Switch>
               <Route path="/" component={LoginPage} />
 
-              {/* Protected routes */}
               <Route path="/dashboard">
                 <AuthGuard requiredLevel="any">
                   <Dashboard />
                 </AuthGuard>
               </Route>
 
-              {/* Users management - Admin only */}
-              <Route path="/users">
-                <AuthGuard requiredLevel="admin">
-                  <UsersPage />
-                </AuthGuard>
-              </Route>
-
-              {/* Profile page - Any authenticated user */}
               <Route path="/profile">
                 <AuthGuard requiredLevel="any">
                   <ProfilePage />
                 </AuthGuard>
               </Route>
 
-              {/* Profile edit page - Any authenticated user */}
               <Route path="/profile/edit">
                 <AuthGuard requiredLevel="any">
                   <ProfileEditPage />
                 </AuthGuard>
               </Route>
 
-              {/* Admin-only routes example */}
+              <Route path="/users">
+                <AuthGuard requiredLevel="admin">
+                  <UsersPage />
+                </AuthGuard>
+              </Route>
+              
               <Route path="/admin">
                 <AuthGuard requiredLevel="admin">
                   <div className="p-8">
@@ -62,7 +72,6 @@ function App() {
                 </AuthGuard>
               </Route>
 
-              {/* Manager-level routes example */}
               <Route path="/management">
                 <AuthGuard requiredLevel="manager">
                   <div className="p-8">
@@ -72,7 +81,6 @@ function App() {
                 </AuthGuard>
               </Route>
 
-              {/* Fallback to 404 */}
               <Route component={NotFound} />
             </Switch>
           </Suspense>
