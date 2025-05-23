@@ -15,9 +15,11 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/hooks/use-auth"
+import { useSafeNavigation } from "@/hooks/use-safe-navigation"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth()
+  const { navigate } = useSafeNavigation()
 
   const userData = {
     name: user?.name || "User",
@@ -117,7 +119,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           title: "User Management",
           url: "/users",
           icon: Users,
-          isActive: window.location.pathname === "/users",
+          isActive: window.location.pathname.startsWith("/users"),
           items: [
             {
               title: "All Users",
@@ -125,7 +127,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             },
             {
               title: "Add User",
-              url: "/users?action=add",
+              url: "/users",
+              onClick: () => navigate("/users?action=add"),
               icon: UserPlus,
             },
           ],
