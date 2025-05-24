@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Frame, Map, PieChart, Settings2, Home, Building2, FileText, Users, ClipboardList, UserPlus } from "lucide-react"
+import type * as React from "react"
+import { Frame, Map, PieChart, Settings2, Home, Building2, FileText, Users, ClipboardList } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
-import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
@@ -15,17 +14,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/hooks/use-auth"
-import { useSafeNavigation } from "@/hooks/use-safe-navigation"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth()
-  const { navigate } = useSafeNavigation()
 
-  const userData = {
-    name: user?.name || "User",
-    email: `${user?.id_number || "user"}@emb.gov.ph`,
-    avatar: "/placeholder.svg?height=32&width=32",
-  }
 
   const getNavItems = () => {
     const baseItems = [
@@ -114,26 +106,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     // Add admin-specific items
     if (user?.userlevel === "admin") {
-      baseItems.push(
-        {
-          title: "User Management",
-          url: "/users",
-          icon: Users,
-          isActive: window.location.pathname.startsWith("/users"),
-          items: [
-            {
-              title: "All Users",
-              url: "/users",
-            },
-            {
-              title: "Add User",
-              url: "/users",
-              onClick: () => navigate("/users?action=add"),
-              icon: UserPlus,
-            },
-          ],
-        }
-      )
+      baseItems.push({
+        title: "User Management",
+        url: "/users",
+        icon: Users,
+        isActive: window.location.pathname === "/users",
+        items: [], // This can now be empty or undefined
+      })
     }
 
     baseItems.push({
@@ -182,27 +161,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 transition-opacity duration-200 group-data-[collapsible=icon]:opacity-0">
-            <img
-              src="/assets/DENR-Logo.svg"
-              alt="DENR Logo"
-              className="h-8 w-8 rounded-full transition-all duration-200"
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold">EMB System</span>
-              <span className="text-xs text-muted-foreground">Management Portal</span>
-            </div>
-          </div>
-        </div>
+      <SidebarHeader className="flex  justify-between">
+        <SidebarTrigger />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
         <NavProjects projects={data.projects} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={userData} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

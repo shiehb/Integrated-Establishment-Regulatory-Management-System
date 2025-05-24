@@ -1,20 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { useAuth } from "@/hooks/use-auth"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
+import { SiteHeader } from "@/components/site-header"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -42,7 +35,6 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import {
-  Search,
   MoreHorizontal,
   Pencil,
   ShieldAlert,
@@ -55,13 +47,10 @@ import {
   Ban,
   CheckCircle,
   InfoIcon,
-  X,
   User,
-  UserCheck,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -163,6 +152,24 @@ const initialUsers: User[] = [
     status: "active",
     createdAt: new Date(2023, 7, 10),
   },
+  {
+    id: "9",
+    name: "Charle Green",
+    id_number: "22336455",
+    email: "charlie.een@emb.gov.ph",
+    userlevel: "manager",
+    status: "active",
+    createdAt: new Date(2023, 7, 10),
+  },
+  {
+    id: "10",
+    name: "David White",
+    id_number: "55667788",
+    email: "charlien@emb.gov.ph",
+    userlevel: "manager",
+    status: "active",
+    createdAt: new Date(2023, 7, 10),
+  }
 ]
 
 const activityGroups: ActivityGroup[] = [
@@ -223,7 +230,6 @@ type SortDirection = "asc" | "desc"
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth()
-  const isMobile = useIsMobile()
   const [users, setUsers] = useState<User[]>(initialUsers)
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddUserOpen, setIsAddUserOpen] = useState(false)
@@ -252,43 +258,62 @@ export default function UsersPage() {
     },
   })
 
-  const processedUsers = users
-    .filter((u) => !(u.userlevel === "admin" && u.id_number === currentUser?.id_number))
-    .filter(
-      (u) =>
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.id_number.includes(searchTerm) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        format(u.createdAt, "MMM d, yyyy").toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-    .filter((u) => (filterLevel === "all" ? true : u.userlevel === filterLevel))
-    .filter((u) => (filterStatus === "all" ? true : u.status === filterStatus))
-    .sort((a, b) => {
-      let comparison = 0
-      switch (sortField) {
-        case "name":
-          comparison = a.name.localeCompare(b.name)
-          break
-        case "id_number":
-          comparison = a.id_number.localeCompare(b.id_number)
-          break
-        case "email":
-          comparison = a.email.localeCompare(b.email)
-          break
-        case "userlevel":
-          comparison = a.userlevel.localeCompare(b.userlevel)
-          break
-        case "status":
-          comparison = a.status.localeCompare(b.status)
-          break
-        case "createdAt":
-          comparison = a.createdAt.getTime() - b.createdAt.getTime()
-          break
-        default:
-          comparison = 0
-      }
-      return sortDirection === "asc" ? comparison : -comparison
-    })
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isAddUserOpen && nameInputRef.current) {
+      nameInputRef.current.focus()
+    }
+  }, [isAddUserOpen])
+
+const isMatch = (user: User) => {
+  if (!searchTerm) return false;
+  return (
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.id_number.includes(searchTerm) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    format(user.createdAt, "MMM d, yyyy").toLowerCase().includes(searchTerm.toLowerCase())
+  );
+};
+
+const processedUsers = users
+  .filter((u) => !(u.userlevel === "admin" && u.id_number === currentUser?.id_number))
+  .filter((u) => (filterLevel === "all" ? true : u.userlevel === filterLevel))
+  .filter((u) => (filterStatus === "all" ? true : u.status === filterStatus))
+  .sort((a, b) => {
+    // First sort by match status (matched items first)
+    const aMatch = isMatch(a);
+    const bMatch = isMatch(b);
+    
+    if (aMatch && !bMatch) return -1;
+    if (!aMatch && bMatch) return 1;
+    
+    //  Existing sorting logic for items with same match status
+    let comparison = 0;
+    switch (sortField) {
+      case "name":
+        comparison = a.name.localeCompare(b.name);
+        break;
+      case "id_number":
+        comparison = a.id_number.localeCompare(b.id_number);
+        break;
+      case "email":
+        comparison = a.email.localeCompare(b.email);
+        break;
+      case "userlevel":
+        comparison = a.userlevel.localeCompare(b.userlevel);
+        break;
+      case "status":
+        comparison = a.status.localeCompare(b.status);
+        break;
+      case "createdAt":
+        comparison = a.createdAt.getTime() - b.createdAt.getTime();
+        break;
+      default:
+        comparison = 0;
+    }
+    return sortDirection === "asc" ? comparison : -comparison;
+  });
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -300,7 +325,6 @@ export default function UsersPage() {
   }
 
   const onSubmit = (data: z.infer<typeof userFormSchema>) => {
-    // Check if form is empty (for new user)
     if (!editingUser) {
       const isEmpty = Object.values(data).every((val) => val === "" || val === "inspector")
       if (isEmpty) {
@@ -309,7 +333,6 @@ export default function UsersPage() {
       }
     }
 
-    // Check for duplicates
     const isDuplicateId = users.some((u) => u.id_number === data.id_number && (!editingUser || u.id !== editingUser.id))
     const isDuplicateEmail = users.some(
       (u) => u.email.toLowerCase() === data.email.toLowerCase() && (!editingUser || u.id !== editingUser.id),
@@ -325,7 +348,6 @@ export default function UsersPage() {
       return
     }
 
-    // For editing, check if there are actual changes
     if (editingUser) {
       const isUnchanged =
         data.name === editingUser.name &&
@@ -453,7 +475,6 @@ export default function UsersPage() {
             Inspector
           </Badge>
         )
-
       default:
         return null
     }
@@ -523,177 +544,27 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="flex h-screen w-full">
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>User Management</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-          </header>
-          <div className="flex flex-1 flex-col gap-4 p-2 pt-0 overflow-hidden">
-            <Card className="flex flex-col h-full overflow-hidden">
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-2xl font-bold tracking-tight">User Management</CardTitle>
-                    <CardDescription>Manage system users and their access levels.</CardDescription>
-                  </div>
-                  <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        onClick={() => {
-                          setEditingUser(null)
-                          form.reset({
-                            name: "",
-                            id_number: "",
-                            email: "",
-                            userlevel: "inspector",
-                          })
-                          setValidationError(null)
-                        }}
-                      >
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Add User
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                      <DialogHeader>
-                        <DialogTitle>{editingUser ? "Edit User" : "Add New User"}</DialogTitle>
-                        <DialogDescription>
-                          {editingUser
-                            ? "Update user information and access level."
-                            : "Fill in the details to create a new user."}
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      {validationError && (
-                        <Alert variant="destructive" className="mb-4">
-                          <AlertCircle className="h-4 w-4" />
-                          <AlertDescription>{validationError}</AlertDescription>
-                        </Alert>
-                      )}
-
-                      {editingUser && (
-                        <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-800">
-                          <AlertCircle className="h-4 w-4 text-amber-600" />
-                          <AlertTitle>Editing User</AlertTitle>
-                          <AlertDescription>You are updating information for user: {editingUser.name}</AlertDescription>
-                        </Alert>
-                      )}
-
-                      <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                          <FormField
-                            control={form.control}
-                            name="name"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Full Name</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="John Doe" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="id_number"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>ID Number</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="12345678" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="email"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Email</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="user@emb.gov.ph" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="userlevel"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>User Level</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select user level" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="admin">Administrator</SelectItem>
-                                    <SelectItem value="manager">Manager</SelectItem>
-                                    <SelectItem value="inspector">Inspector</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          {!editingUser && (
-                            <Alert>
-                              <InfoIcon className="h-4 w-4" />
-                              <AlertTitle>Default Password</AlertTitle>
-                              <AlertDescription>
-                                A default password will be generated using the first 4 digits of the ID number followed
-                                by "@emb"
-                              </AlertDescription>
-                            </Alert>
-                          )}
-                          <DialogFooter className="gap-2">
-                            <Button variant="outline" type="button" onClick={handleCancelForm}>
-                              Cancel
-                            </Button>
-                            <Button type="submit">{editingUser ? "Update User" : "Add User"}</Button>
-                          </DialogFooter>
-                        </form>
-                      </Form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col flex-1 overflow-hidden">
-                <div className="flex flex-col gap-4 mb-4">
-                  {/* Responsive search and filters */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start pt-2">
-                    <div className="relative flex items-center col-span-1 md:col-span-4">
-                      <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search users, dates..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-9 w-full"
-                      />
+    <div className="[--header-height:calc(theme(spacing.14))]">
+      <SidebarProvider className="flex flex-col">
+        <SiteHeader 
+          onSearch={(query) => setSearchTerm(query)}
+          searchData={users.map(user => ({
+            id: user.id,
+            name: user.name,
+            id_number: user.id_number,
+            email: user.email
+          }))}
+        />
+        <div className="flex flex-1">
+          <AppSidebar />
+          <SidebarInset>
+            <div className="flex flex-1 flex-col gap-4 p-2 pt-2 overflow-hidden">
+              <Card className="flex flex-col h-full overflow-hidden border">
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-2xl font-bold tracking-tight">User Management</CardTitle>
                     </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap gap-2 items-center col-span-1 md:col-span-7">
                       <Select value={filterLevel} onValueChange={setFilterLevel}>
                         <SelectTrigger className="w-full sm:w-[150px]">
@@ -722,87 +593,224 @@ export default function UsersPage() {
                         Reset Filters
                       </Button>
                     </div>
-                    <div className="text-sm text-muted-foreground md:text-right col-span-1 md:col-span-1 mt-1">
-                      {processedUsers.length} / {users.length - (currentUser?.userlevel === "admin" ? 1 : 0)}
-                    </div>
+                    
+                    <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          onClick={() => {
+                            setEditingUser(null)
+                            form.reset({
+                              name: "",
+                              id_number: "",
+                              email: "",
+                              userlevel: "inspector",
+                            })
+                            setValidationError(null)
+                          }}
+                        >
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          Add User
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[500px]">
+                        <DialogHeader>
+                          <DialogTitle>{editingUser ? "Edit User" : "Add New User"}</DialogTitle>
+                          <DialogDescription>
+                            {editingUser
+                              ? "Update user information and access level."
+                              : "Fill in the details to create a new user."}
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        {validationError && (
+                          <Alert variant="destructive" className="mb-4">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>{validationError}</AlertDescription>
+                          </Alert>
+                        )}
+
+                        {editingUser && (
+                          <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-800">
+                            <AlertCircle className="h-4 w-4 text-amber-600" />
+                            <AlertTitle>Editing User</AlertTitle>
+                            <AlertDescription>You are updating information for user: {editingUser.name}</AlertDescription>
+                          </Alert>
+                        )}
+
+                        <Form {...form}>
+                          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                            <FormField
+                              control={form.control}
+                              name="name"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Full Name</FormLabel>
+                                  <FormControl>
+                                    <Input 
+                                      placeholder="John Doe" 
+                                      {...field} 
+                                      ref={nameInputRef}
+                                      className="focus-visible:ring-2 focus-visible:ring-green-500 border"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="id_number"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>ID Number</FormLabel>
+                                  <FormControl>
+                                    <Input 
+                                      placeholder="12345678" 
+                                      {...field} 
+                                      className="focus-visible:ring-2 focus-visible:ring-green-500 border"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="email"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Email</FormLabel>
+                                  <FormControl>
+                                    <Input 
+                                      placeholder="user@emb.gov.ph" 
+                                      {...field} 
+                                      className="focus-visible:ring-2 focus-visible:ring-green-500 border"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="userlevel"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>User Level</FormLabel>
+                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl>
+                                      <SelectTrigger className="focus-visible:ring-2 focus-visible:ring-green-500 border">
+                                        <SelectValue placeholder="Select user level" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="admin">Administrator</SelectItem>
+                                      <SelectItem value="manager">Manager</SelectItem>
+                                      <SelectItem value="inspector">Inspector</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            {!editingUser && (
+                              <Alert>
+                                <InfoIcon className="h-4 w-4" />
+                                <AlertTitle>Default Password</AlertTitle>
+                                <AlertDescription>
+                                  A default password will be generated using the first 4 digits of the ID number followed
+                                  by "@emb"
+                                </AlertDescription>
+                              </Alert>
+                            )}
+                            <DialogFooter className="gap-2">
+                              <Button variant="outline" type="button" onClick={handleCancelForm}>
+                                Cancel
+                              </Button>
+                              <Button type="submit">{editingUser ? "Update User" : "Add User"}</Button>
+                            </DialogFooter>
+                          </form>
+                        </Form>
+                      </DialogContent>
+                    </Dialog>
                   </div>
-                </div>
+                </CardHeader>
+                <CardContent className="flex flex-col flex-1 overflow-hidden">
+                  <div className="rounded-md border flex-1 flex flex-col overflow-hidden">
+                    <Table className="table-fixed">
+                      <TableHeader className="sticky top-0 bg-background z-10">
+                        <TableRow>
+                          <TableHead className="w-3/12 text-left px-4 cursor-pointer" onClick={() => handleSort("name")}>
+                            <div className="flex items-center">
+                              Name
+                              <ArrowUpDown className="ml-2 h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-2/12 text-center px-4 cursor-pointer"
+                            onClick={() => handleSort("id_number")}
+                          >
+                            <div className="flex items-center justify-center">
+                              ID
+                              <ArrowUpDown className="ml-2 h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-3/12 text-left px-4 cursor-pointer hidden md:table-cell"
+                            onClick={() => handleSort("email")}
+                          >
+                            <div className="flex items-center">
+                              Email
+                              <ArrowUpDown className="ml-2 h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-2/12 text-center px-4 cursor-pointer"
+                            onClick={() => handleSort("userlevel")}
+                          >
+                            <div className="flex items-center justify-center">
+                              Role
+                              <ArrowUpDown className="ml-2 h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-2/12 text-left px-4 cursor-pointer hidden md:table-cell"
+                            onClick={() => handleSort("createdAt")}
+                          >
+                            <div className="flex items-center">
+                              Created
+                              <ArrowUpDown className="ml-2 h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-2/12 text-left px-4 cursor-pointer"
+                            onClick={() => handleSort("status")}
+                          >
+                            <div className="flex items-center justify-center">
+                              Status
+                              <ArrowUpDown className="ml-2 h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead className="w-1/12 text-right px-4">
+                            <span className="sr-only">Actions</span>
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                    </Table>
 
-                <div className="rounded-md border flex-1 flex flex-col overflow-hidden">
-                  <Table className="table-fixed">
-                    <TableHeader className="sticky top-0 bg-background z-10">
-                      <TableRow>
-                        <TableHead className="w-3/12 text-left px-4 cursor-pointer" onClick={() => handleSort("name")}>
-                          <div className="flex items-center">
-                            Name
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="w-2/12 text-center px-4 cursor-pointer"
-                          onClick={() => handleSort("id_number")}
-                        >
-                          <div className="flex items-center justify-center">
-                            ID
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="w-3/12 text-left px-4 cursor-pointer hidden md:table-cell"
-                          onClick={() => handleSort("email")}
-                        >
-                          <div className="flex items-center">
-                            Email
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="w-2/12 text-center px-4 cursor-pointer"
-                          onClick={() => handleSort("userlevel")}
-                        >
-                          <div className="flex items-center justify-center">
-                            Role
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="w-2/12 text-left px-4 cursor-pointer hidden md:table-cell"
-                          onClick={() => handleSort("createdAt")}
-                        >
-                          <div className="flex items-center">
-                            Created
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="w-2/12 text-left px-4 cursor-pointer"
-                          onClick={() => handleSort("status")}
-                        >
-                          <div className="flex items-center justify-center">
-                            Status
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </div>
-                        </TableHead>
-                        <TableHead className="w-1/12 text-right px-4">
-                          <span className="sr-only">Actions</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                  </Table>
-
-                  <div className="flex-1 overflow-hidden">
-                    <ScrollArea className="h-[calc(100vh-250px)] w-full">
-                      <Table className="table-fixed">
-                        <TableBody>
-                          {processedUsers.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center py-4">
-                                No users found
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            processedUsers.map((user) => (
-                              <TableRow key={user.id}>
+                    <div className="flex-1 overflow-hidden">
+                      <ScrollArea className="h-[calc(100vh-250px)] w-full">
+                        <Table className="table-fixed">
+                          <TableBody>
+                            {processedUsers.map((user) => (
+                              <TableRow 
+                                  key={user.id} 
+                                    className={cn(
+                                      "hover:bg-green-50 dark:hover:bg-green-900/10 border-green-200 dark:border-green-800",
+                                      isMatch(user) ?
+                                      "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-600" : ""
+                                    )}
+                                  >
                                 <TableCell className="w-3/12 px-4 font-medium">{user.name}</TableCell>
                                 <TableCell className="w-2/12 text-center px-4">{user.id_number}</TableCell>
                                 <TableCell className="w-3/12 px-4 hidden md:table-cell">{user.email}</TableCell>
@@ -865,17 +873,17 @@ export default function UsersPage() {
                                   </DropdownMenu>
                                 </TableCell>
                               </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </SidebarInset>
+                </CardContent>
+              </Card>
+            </div>
+          </SidebarInset>
+        </div>
 
         {/* Confirmation Dialogs */}
         <Dialog open={showAddConfirm} onOpenChange={setShowAddConfirm}>
@@ -946,6 +954,7 @@ export default function UsersPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
 
         <Sheet open={activitySheetOpen} onOpenChange={setActivitySheetOpen}>
           <SheetContent className="w-full sm:max-w-md md:max-w-lg">

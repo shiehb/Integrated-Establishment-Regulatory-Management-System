@@ -1,127 +1,112 @@
-"use client"
-
-import type * as React from "react"
-import { Frame, Map, PieChart, Settings2, Home, Building2, FileText, Users, ClipboardList } from "lucide-react"
+import * as React from "react"
+import {
+  ClipboardList,
+  FileText,
+  LifeBuoy,
+  Map,
+  User2,
+  PieChart,
+  Send,
+  Settings2,
+  Building2,
+} from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
-import { NavUser } from "@/components/nav-user"
+// import { NavProjects } from "@/components/nav-projects"
+import { NavSecondary } from "@/components/nav-secondary"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
-  SidebarTrigger,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { useAuth } from "@/hooks/use-auth"
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { user } = useAuth()
+const data = {
+  user: {
+    name: "shadcn",
+    email: "m@example.com",
+    avatar: "/avatars/shadcn.jpg",
+  },
+  navMain: [
+    {
+      title: "User Management",
+      url: "/users",
+      icon: User2,
+      isActive: true,
+    },
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: PieChart,
+      isActive: false,
 
-  const userData = {
-    name: user?.name || "User",
-    email: `${user?.id_number || "user"}@emb.gov.ph`,
-    avatar: "/placeholder.svg?height=32&width=32",
-  }
-
-  const getNavItems = () => {
-    const baseItems = [
-      {
-        title: "Dashboard",
-        url: "/dashboard",
-        icon: Home,
-        isActive: window.location.pathname === "/dashboard",
-        items: [
-          {
-            title: "Overview",
-            url: "/dashboard",
-          },
-          {
-            title: "Analytics",
-            url: "#",
-          },
-          {
-            title: "Reports",
-            url: "#",
-          },
-        ],
-      },
-      {
-        title: "Establishments",
-        url: "#",
-        icon: Building2,
-        items: [
-          {
-            title: "All Establishments",
-            url: "#",
-          },
-          {
-            title: "Add New",
-            url: "#",
-          },
-          {
-            title: "Categories",
-            url: "#",
-          },
-        ],
-      },
-      {
-        title: "Permits",
-        url: "#",
-        icon: FileText,
-        items: [
-          {
-            title: "All Permits",
-            url: "#",
-          },
-          {
-            title: "Pending",
-            url: "#",
-          },
-          {
-            title: "Approved",
-            url: "#",
-          },
-          {
-            title: "Expired",
-            url: "#",
-          },
-        ],
-      },
-      {
-        title: "Inspections",
-        url: "#",
-        icon: ClipboardList,
-        items: [
-          {
-            title: "Schedule",
-            url: "#",
-          },
-          {
-            title: "Reports",
-            url: "#",
-          },
-          {
-            title: "Templates",
-            url: "#",
-          },
-        ],
-      },
-    ]
-
-    // Add admin-specific items
-    if (user?.userlevel === "admin") {
-      baseItems.push({
-        title: "User Management",
-        url: "/users",
-        icon: Users,
-        isActive: window.location.pathname === "/users",
-        items: [], // This can now be empty or undefined
-      })
-    }
-
-    baseItems.push({
+    },
+     {
+      title: "Map",
+      url: "#",
+      icon: Map,
+    },
+    {
+      title: "Establishments",
+      url: "#",
+      icon: Building2,
+      items: [
+        {
+          title: "All Establishments",
+          url: "#",
+        },
+        {
+          title: "Add Establishment",
+          url: "#",
+        },
+        {
+          title: "Establishment Areas",
+          url: "#",
+        },
+      ],
+    },
+    {
+      title: "Reports",
+      url: "#",
+      icon: FileText,
+      items: [
+        {
+          title: "All Reports",
+          url: "#",
+        },
+        {
+          title: "Add Report",
+          url: "#",
+        },
+        {
+          title: "Report Categories",
+          url: "#",
+        },
+      ],
+    },
+    {
+      title: "Inspections",
+      url: "#",
+      icon: ClipboardList,
+      items: [
+        {
+          title: "All Inspections",
+          url: "#",
+        },
+        {
+          title: "Add Inspection",
+          url: "#",
+        },
+        {
+          title: "Inspection Types",
+          url: "#",
+        },
+      ],
+    },
+    {
       title: "Settings",
       url: "#",
       icon: Settings2,
@@ -131,65 +116,56 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           url: "#",
         },
         {
-          title: "System",
+          title: "Team",
           url: "#",
         },
         {
-          title: "Notifications",
+          title: "Billing",
+          url: "#",
+        },
+        {
+          title: "Limits",
           url: "#",
         },
       ],
-    })
+    },
+  ],
+  navSecondary: [
+    {
+      title: "Support",
+      url: "#",
+      icon: LifeBuoy,
+    },
+    {
+      title: "Feedback",
+      url: "#",
+      icon: Send,
+    },
+  ],
+}
 
-    return baseItems
-  }
-
-  const data = {
-    navMain: getNavItems(),
-    projects: [
-      {
-        name: "Pollution Control",
-        url: "#",
-        icon: Frame,
-      },
-      {
-        name: "Waste Management",
-        url: "#",
-        icon: PieChart,
-      },
-      {
-        name: "Environmental Impact",
-        url: "#",
-        icon: Map,
-      },
-    ],
-  }
-
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 transition-opacity duration-200 group-data-[collapsible=icon]:opacity-0">
-            <img
-              src="/assets/DENR-Logo.svg"
-              alt="DENR Logo"
-              className="h-8 w-8 rounded-full transition-all duration-200"
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold">EMB System</span>
-              <span className="text-xs text-muted-foreground">Management Portal</span>
-            </div>
-          </div>
-        </div>
+    <Sidebar
+      className="top-(--header-height) h-[calc(100svh-var(--header-height))]!"
+      {...props}
+    >
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
-        <NavProjects projects={data.projects} />
+        {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={userData} />
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }
