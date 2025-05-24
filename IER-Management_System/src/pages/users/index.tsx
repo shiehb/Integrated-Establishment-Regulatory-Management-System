@@ -55,6 +55,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 
 type User = {
   id: string
@@ -248,9 +249,15 @@ export default function UsersPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [activitySheetOpen, setActivitySheetOpen] = useState(false)
   const [selectedUserActivity, setSelectedUserActivity] = useState<User | null>(null)
-  const [userToReset, setUserToReset] = useState<User | null>(null)
-  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [showResetDialog, setShowResetDialog] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [adminPass, setAdminPass] = useState("")
+  const [adminPassError, setAdminPassError] = useState("")
+  const [showPasswordConfig, setShowPasswordConfig] = useState(false)
+  const [passwordPattern, setPasswordPattern] = useState("@emb")
+  const [isConfirmStep, setIsConfirmStep] = useState(false)
+  const [tempPattern, setTempPattern] = useState("@emb")
 
   const form = useForm<z.infer<typeof userFormSchema>>({
     resolver: zodResolver(userFormSchema),
@@ -336,28 +343,29 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
     }
   }
 
-  const handleDialogClose = useCallback(() => {
-    setIsAddUserOpen(false)
-    setEditingUser(null)
-    setValidationError(null)
-    setFormData(null)
-    form.reset({
-      name: "",
-      id_number: "",
-      email: "",
-      userlevel: "inspector"
-    })
-  }, [form])
+  const handleDialogClose = (dialogStateSetter: (value: boolean) => void) => {
+    // First close the dialog
+    dialogStateSetter(false);
+    
+    // Then clean up any associated states after a short delay
+    setTimeout(() => {
+      if (dialogStateSetter === setShowResetDialog) {
+        resetAllStates();
+      } else if (dialogStateSetter === setShowPasswordConfig) {
+        handleCloseConfig();
+      }
+    }, 100);
+  };
 
   const handleAddNewClick = useCallback(() => {
-    handleDialogClose()
+    handleDialogClose(setIsAddUserOpen)
     setTimeout(() => {
       setIsAddUserOpen(true)
     }, 100)
   }, [handleDialogClose])
 
   const handleEditClick = useCallback((user: User) => {
-    handleDialogClose()
+    handleDialogClose(setIsAddUserOpen)
     setTimeout(() => {
       form.reset({
         name: user.name,
@@ -418,10 +426,25 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
     }
   }
 
-  const confirmAddUser = () => {
-    if (!formData) return
+  const cleanupForm = () => {
+    setIsAddUserOpen(false);
+    setEditingUser(null);
+    setValidationError(null);
+    setFormData(null);
+    setShowAddConfirm(false);
+    setShowEditConfirm(false);
+    form.reset({
+      name: "",
+      id_number: "",
+      email: "",
+      userlevel: "inspector"
+    });
+  };
 
-    const defaultPassword = `${formData.id_number.substring(0, 4)}@emb`
+  const confirmAddUser = () => {
+    if (!formData) return;
+
+    const defaultPassword = getDefaultPassword(formData.id_number);
     const newUser: User = {
       id: crypto.randomUUID(),
       name: formData.name,
@@ -431,21 +454,26 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
       status: "active",
       createdAt: new Date(),
       password: defaultPassword,
-    }
-    setUsers([...users, newUser])
-    handleDialogClose()
-    setShowAddConfirm(false)
+    };
 
+    // First update the users list
+    setUsers(prev => [...prev, newUser]);
+    
+    // Then cleanup the form and close dialogs
+    cleanupForm();
+
+    // Finally show the success message
     toast.success("User Added", {
       description: `${newUser.name} has been added successfully.`,
-    })
-  }
+    });
+  };
 
   const confirmEditUser = () => {
-    if (!formData || !editingUser) return
+    if (!formData || !editingUser) return;
 
-    setUsers(
-      users.map((u) =>
+    // First update the users list
+    setUsers(prev =>
+      prev.map((u) =>
         u.id === editingUser.id
           ? {
               ...u,
@@ -454,40 +482,24 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
               email: formData.email,
               userlevel: formData.userlevel,
             }
-          : u,
-      ),
-    )
-    handleDialogClose()
-    setShowEditConfirm(false)
+          : u
+      )
+    );
 
+    // Then cleanup the form and close dialogs
+    cleanupForm();
+
+    // Finally show the success message
     toast.success("User Updated", {
       description: `${formData.name}'s information has been updated.`,
-    })
-  }
+    });
+  };
 
   const toggleUserStatus = (user: User) => {
     setUserToToggle(null)
     setTimeout(() => {
       setUserToToggle(user)
       setShowStatusConfirm(true)
-    }, 100)
-  }
-
-  const openActivitySheet = (user: User) => {
-    setSelectedUserActivity(null)
-    setActivitySheetOpen(false)
-    setTimeout(() => {
-      setSelectedUserActivity(user)
-      setActivitySheetOpen(true)
-    }, 100)
-  }
-
-  const handleRequestResetPassword = (user: User) => {
-    setUserToReset(null)
-    setShowResetConfirm(false)
-    setTimeout(() => {
-      setUserToReset(user)
-      setShowResetConfirm(true)
     }, 100)
   }
 
@@ -508,28 +520,70 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
       ),
     )
     setUserToToggle(null)
-    setShowStatusConfirm(false)
+    handleDialogClose(setShowStatusConfirm)
 
     toast.success(`User ${newStatus === "active" ? "Activated" : "Deactivated"}`, {
       description: `${userCopy.name} has been ${newStatus === "active" ? "activated" : "deactivated"}.`,
     })
   }
 
-  const confirmResetPassword = () => {
-    if (!userToReset) return
-    
-    const userCopy = { ...userToReset }
-    const defaultPassword = `${userToReset.id_number.substring(0, 4)}@emb`
-    
-    setUsers(users.map((u) => 
-      u.id === userToReset.id ? { ...u, password: defaultPassword } : u
-    ))
-    setUserToReset(null)
-    setShowResetConfirm(false)
-    
-    toast.success("Password Reset", {
-      description: `Password for ${userCopy.name} has been reset to default.`,
-    })
+  const openActivitySheet = (user: User) => {
+    setSelectedUserActivity(null)
+    setActivitySheetOpen(false)
+    setTimeout(() => {
+      setSelectedUserActivity(user)
+      setActivitySheetOpen(true)
+    }, 100)
+  }
+
+  const resetAllStates = () => {
+    setShowResetDialog(false)
+    setSelectedUser(null)
+    setAdminPass("")
+    setAdminPassError("")
+  }
+
+  const cleanupResetDialog = () => {
+    setShowResetDialog(false);
+    setSelectedUser(null);
+    setAdminPass("");
+    setAdminPassError("");
+  };
+
+  const handleResetPassword = (user: User) => {
+    cleanupResetDialog();
+    setTimeout(() => {
+      setSelectedUser(user);
+      setShowResetDialog(true);
+    }, 0);
+  };
+
+  const handleResetConfirm = () => {
+    if (!selectedUser || !adminPass.trim()) return;
+
+    if (adminPass === "admin123") {
+      const defaultPassword = getDefaultPassword(selectedUser.id_number);
+      const userName = selectedUser.name;
+      
+      // Update user password
+      setUsers(prev => 
+        prev.map(u => u.id === selectedUser.id ? { ...u, password: defaultPassword } : u)
+      );
+
+      // Cleanup immediately
+      cleanupResetDialog();
+
+      // Show success message
+      toast.success("Password Reset", {
+        description: `Password for ${userName} has been reset to default (${defaultPassword}).`,
+      });
+    } else {
+      setAdminPassError("Incorrect administrator password");
+    }
+  };
+
+  const getDefaultPassword = (idNumber: string) => {
+    return `${idNumber.substring(0, 4)}${passwordPattern}`
   }
 
   const getUserLevelBadge = (userlevel: string) => {
@@ -597,35 +651,72 @@ const resetFilters = () => {
 
   const handleCancelForm = () => {
     if (hasFormChanges()) {
-      setShowCancelConfirm(true)
+      setShowCancelConfirm(true);
     } else {
-      setIsAddUserOpen(false)
-      setEditingUser(null)
-      setValidationError(null)
+      cleanupForm();
     }
-  }
+  };
 
   const confirmCancelForm = () => {
-    setIsAddUserOpen(false)
-    setEditingUser(null)
-    setValidationError(null)
-    setShowCancelConfirm(false)
-  }
+    cleanupForm();
+    setShowCancelConfirm(false);
+  };
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedUsers(processedUsers.map(user => user.id))
+      const userIds = processedUsers.map(user => user.id);
+      setSelectedUsers(userIds);
     } else {
-      setSelectedUsers([])
+      setSelectedUsers([]);
+    }
+  };
+
+  const toggleUserSelection = (userId: string, checked: boolean) => {
+    setSelectedUsers(prev => {
+      if (checked) {
+        return [...prev, userId];
+      } else {
+        return prev.filter(id => id !== userId);
+      }
+    });
+  };
+
+  const handleStartPasswordConfig = () => {
+    setTempPattern(passwordPattern);
+    setShowPasswordConfig(true);
+    setIsConfirmStep(false);
+    setAdminPass("");
+    setAdminPassError("");
+  }
+
+  const handleProceedToConfirm = () => {
+    setIsConfirmStep(true);
+    setAdminPass("");
+    setAdminPassError("");
+  }
+
+  const handleConfirmPattern = () => {
+    if (adminPass === "admin123") {
+      setPasswordPattern(tempPattern);
+      setShowPasswordConfig(false);
+      setIsConfirmStep(false);
+      setAdminPass("");
+      setAdminPassError("");
+      
+      toast.success("Pattern Updated", {
+        description: `New default password pattern has been saved.`,
+      });
+    } else {
+      setAdminPassError("Incorrect administrator password");
     }
   }
 
-  const toggleUserSelection = (userId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedUsers([...selectedUsers, userId])
-    } else {
-      setSelectedUsers(selectedUsers.filter(id => id !== userId))
-    }
+  const handleCloseConfig = () => {
+    setShowPasswordConfig(false);
+    setIsConfirmStep(false);
+    setTempPattern(passwordPattern);
+    setAdminPass("");
+    setAdminPassError("");
   }
 
   return (
@@ -705,6 +796,15 @@ const resetFilters = () => {
                           >
                             Reset Filters
                           </Button>
+
+                          <Button
+                            variant="outline"
+                            onClick={handleStartPasswordConfig}
+                            className="w-full sm:w-auto"
+                          >
+                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            Configure Default Password
+                          </Button>
                         </div>
 
                         {/* Add User Button with Dialog - Completely Preserved */}
@@ -712,7 +812,7 @@ const resetFilters = () => {
                           open={isAddUserOpen} 
                           onOpenChange={(open) => {
                             if (!open) {
-                              handleDialogClose()
+                              cleanupForm();
                             }
                           }}
                         >
@@ -725,12 +825,15 @@ const resetFilters = () => {
                               Add User
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="sm:max-w-[500px]">
+                          <DialogContent
+                            className="sm:max-w-[500px]"
+                            aria-describedby="add-user-description"
+                          >
                             <DialogHeader>
                               <DialogTitle>
                                 {editingUser ? "Edit User" : "Add New User"}
                               </DialogTitle>
-                              <DialogDescription>
+                              <DialogDescription id="add-user-description">
                                 {editingUser
                                   ? "Update user information and access level."
                                   : "Fill in the details to create a new user."}
@@ -990,21 +1093,37 @@ const resetFilters = () => {
                                   </div>
                                 </TableCell>
                                 <TableCell className="w-1/12 text-right px-4">
-                                  <DropdownMenu>
+                                  <DropdownMenu modal={true}>
                                     <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="icon"
+                                        className="focus-visible:ring-2 focus-visible:ring-offset-2"
+                                      >
                                         <MoreHorizontal className="h-4 w-4" />
                                         <span className="sr-only">Open menu</span>
                                       </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
+                                    <DropdownMenuContent 
+                                      align="end"
+                                      side="right"
+                                      sideOffset={5}
+                                      className="w-48"
+                                      onCloseAutoFocus={(event) => event.preventDefault()}
+                                    >
                                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                      <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                                      <DropdownMenuItem 
+                                        onSelect={() => handleEditUser(user)}
+                                        className="cursor-pointer"
+                                      >
                                         <Pencil className="mr-2 h-4 w-4" />
                                         Edit
                                       </DropdownMenuItem>
                                       <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => toggleUserStatus(user)}>
+                                      <DropdownMenuItem 
+                                        onSelect={() => toggleUserStatus(user)}
+                                        className="cursor-pointer"
+                                      >
                                         {user.status === "active" ? (
                                           <>
                                             <Ban className="mr-2 h-4 w-4 text-destructive" />
@@ -1017,15 +1136,20 @@ const resetFilters = () => {
                                           </>
                                         )}
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => openActivitySheet(user)}>
+                                      <DropdownMenuItem 
+                                        onSelect={() => openActivitySheet(user)}
+                                        className="cursor-pointer"
+                                      >
                                         <Calendar className="mr-2 h-4 w-4" />
                                         View Activity
                                       </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleRequestResetPassword(user)}>
-                                          <ShieldCheck className="mr-2 h-4 w-4 text-blue-500" />
-                                          <span className="text-blue-500">Reset Password</span>
-                                        </DropdownMenuItem>
-
+                                      <DropdownMenuItem 
+                                        onSelect={() => handleResetPassword(user)}
+                                        className="cursor-pointer"
+                                      >
+                                        <ShieldCheck className="mr-2 h-4 w-4 text-blue-500" />
+                                        <span className="text-blue-500">Reset Password</span>
+                                      </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </TableCell>
@@ -1044,10 +1168,13 @@ const resetFilters = () => {
 
         {/* Confirmation Dialogs */}
         <Dialog open={showAddConfirm} onOpenChange={setShowAddConfirm}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent
+            className="sm:max-w-[500px]"
+            aria-describedby="add-confirm-description"
+          >
             <DialogHeader>
               <DialogTitle>Confirm Add User</DialogTitle>
-              <DialogDescription>
+              <DialogDescription id="add-confirm-description">
                 Are you sure you want to add this new user? A default password will be generated.
               </DialogDescription>
             </DialogHeader>
@@ -1060,64 +1187,66 @@ const resetFilters = () => {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={showEditConfirm} onOpenChange={(open) => {
-          if (!open) {
-            setShowEditConfirm(false)
-          }
-        }}>
-          <DialogContent className="sm:max-w-[500px]">
+        <Dialog open={showEditConfirm} onOpenChange={setShowEditConfirm}>
+          <DialogContent
+            className="sm:max-w-[500px]"
+            aria-describedby="edit-confirm-description"
+          >
             <DialogHeader>
               <DialogTitle>Confirm User Changes</DialogTitle>
-              <DialogDescription>
-                {editingUser && formData && (
-                  <div className="space-y-4 mt-4">
-                    <Alert>
-                      <InfoIcon className="h-4 w-4" />
-                      <AlertTitle>Review Changes</AlertTitle>
-                      <AlertDescription>
-                        Please review the following changes for user: {editingUser.name}
-                      </AlertDescription>
-                    </Alert>
-                    
-                    {editingUser.name !== formData.name && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">Name:</span>
-                        <span className="line-through text-muted-foreground">{editingUser.name}</span>
-                        <span className="text-green-600">→</span>
-                        <span className="text-green-600">{formData.name}</span>
-                      </div>
-                    )}
-                    
-                    {editingUser.id_number !== formData.id_number && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">ID Number:</span>
-                        <span className="line-through text-muted-foreground">{editingUser.id_number}</span>
-                        <span className="text-green-600">→</span>
-                        <span className="text-green-600">{formData.id_number}</span>
-                      </div>
-                    )}
-                    
-                    {editingUser.email !== formData.email && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">Email:</span>
-                        <span className="line-through text-muted-foreground">{editingUser.email}</span>
-                        <span className="text-green-600">→</span>
-                        <span className="text-green-600">{formData.email}</span>
-                      </div>
-                    )}
-                    
-                    {editingUser.userlevel !== formData.userlevel && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">User Level:</span>
-                        <span className="line-through text-muted-foreground capitalize">{editingUser.userlevel}</span>
-                        <span className="text-green-600">→</span>
-                        <span className="text-green-600 capitalize">{formData.userlevel}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
+              <DialogDescription id="edit-confirm-description">
+                Please review the changes before confirming.
               </DialogDescription>
             </DialogHeader>
+
+            {editingUser && formData && (
+              <div className="space-y-4 mt-4">
+                <Alert>
+                  <InfoIcon className="h-4 w-4" />
+                  <AlertTitle>Review Changes</AlertTitle>
+                  <AlertDescription>
+                    Please review the following changes for user: {editingUser.name}
+                  </AlertDescription>
+                </Alert>
+                
+                {editingUser.name !== formData.name && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">Name:</span>
+                    <span className="line-through text-muted-foreground">{editingUser.name}</span>
+                    <span className="text-green-600">→</span>
+                    <span className="text-green-600">{formData.name}</span>
+                  </div>
+                )}
+                
+                {editingUser.id_number !== formData.id_number && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">ID Number:</span>
+                    <span className="line-through text-muted-foreground">{editingUser.id_number}</span>
+                    <span className="text-green-600">→</span>
+                    <span className="text-green-600">{formData.id_number}</span>
+                  </div>
+                )}
+                
+                {editingUser.email !== formData.email && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">Email:</span>
+                    <span className="line-through text-muted-foreground">{editingUser.email}</span>
+                    <span className="text-green-600">→</span>
+                    <span className="text-green-600">{formData.email}</span>
+                  </div>
+                )}
+                
+                {editingUser.userlevel !== formData.userlevel && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">User Level:</span>
+                    <span className="line-through text-muted-foreground capitalize">{editingUser.userlevel}</span>
+                    <span className="text-green-600">→</span>
+                    <span className="text-green-600 capitalize">{formData.userlevel}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <DialogFooter className="gap-2 mt-4">
               <Button variant="outline" onClick={() => setShowEditConfirm(false)}>
                 Cancel
@@ -1130,25 +1259,27 @@ const resetFilters = () => {
         </Dialog>
 
         <Dialog 
-          open={showStatusConfirm} 
+          open={showStatusConfirm}
           onOpenChange={(open) => {
             if (!open) {
-              setShowStatusConfirm(false)
-              setUserToToggle(null)
+              handleDialogClose(setShowStatusConfirm);
             }
           }}
         >
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent
+            className="sm:max-w-[500px]"
+            aria-describedby="status-confirm-description"
+          >
             <DialogHeader>
               <DialogTitle>{userToToggle?.status === "active" ? "Deactivation" : "Activation"}</DialogTitle>
-              <DialogDescription>
+              <DialogDescription id="status-confirm-description">
                 {userToToggle?.status === "active"
                   ? "Are you sure you want to deactivate this user? They will lose access to the system."
                   : "Are you sure you want to activate this user? They will regain access to the system."}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowStatusConfirm(false)}>
+              <Button variant="outline" onClick={() => handleDialogClose(setShowStatusConfirm)}>
                 Cancel
               </Button>
               <Button onClick={confirmToggleStatus}>Confirm</Button>
@@ -1158,10 +1289,13 @@ const resetFilters = () => {
 
         {/* Cancel Confirmation Dialog */}
         <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent
+            className="sm:max-w-[500px]"
+            aria-describedby="cancel-confirm-description"
+          >
             <DialogHeader>
               <DialogTitle>Discard Changes</DialogTitle>
-              <DialogDescription>
+              <DialogDescription id="cancel-confirm-description">
                 You have unsaved changes. Are you sure you want to cancel? All changes will be lost.
               </DialogDescription>
             </DialogHeader>
@@ -1174,41 +1308,81 @@ const resetFilters = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Reset Password Confirmation Dialog */}
+        {/* Reset Password Dialog */}
         <Dialog 
-          open={showResetConfirm} 
-          onOpenChange={(open) => {
-            if (!open) {
-              setShowResetConfirm(false)
-              setUserToReset(null)
-            }
-          }}
+          open={showResetDialog}
+          onOpenChange={(open) => !open && cleanupResetDialog()}
         >
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-semibold text-foreground">
-                Reset Password
-              </DialogTitle>
-              <DialogDescription>
-                <div className="text-sm text-muted-foreground space-y-2">
-                  <p>
-                    This will reset the user's password to the default format:
-                    <span className="font-semibold text-foreground"> first 4 digits of their ID + "@emb"</span>.
-                  </p>
-                  <p>
-                    Are you sure you want to proceed? The user will need to change their password after logging in.
-                  </p>
+          <DialogContent
+            aria-describedby="reset-password-description"
+          >
+            {selectedUser && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Reset Password</DialogTitle>
+                  <DialogDescription id="reset-password-description">
+                    Please confirm the password reset for {selectedUser.name}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-4">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Warning</AlertTitle>
+                    <AlertDescription>
+                      This will reset the user's password to the default pattern. They will need to change it upon next login.
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="rounded-lg border bg-card p-3">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{selectedUser.name}</span>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-sm text-muted-foreground">New Password Will Be:</div>
+                        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm">
+                          {getDefaultPassword(selectedUser.id_number)}
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="adminPassword">Administrator Password</Label>
+                    <Input
+                      id="adminPassword"
+                      type="password"
+                      value={adminPass}
+                      onChange={(e) => {
+                        setAdminPass(e.target.value);
+                        setAdminPassError("");
+                      }}
+                      placeholder="Enter administrator password"
+                    />
+                    {adminPassError && (
+                      <p className="text-sm text-destructive">{adminPassError}</p>
+                    )}
+                  </div>
                 </div>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowResetConfirm(false)}>
-                Cancel
-              </Button>
-              <Button  onClick={confirmResetPassword}>
-                Confirm Reset
-              </Button>
-            </DialogFooter>
+
+                <DialogFooter>
+                  <Button 
+                    variant="outline" 
+                    onClick={cleanupResetDialog}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleResetConfirm}
+                    disabled={!adminPass.trim()}
+                  >
+                    Reset Password
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -1217,7 +1391,7 @@ const resetFilters = () => {
           open={activitySheetOpen} 
           onOpenChange={(open) => {
             if (!open) {
-              setActivitySheetOpen(false)
+              handleDialogClose(setActivitySheetOpen)
               setSelectedUserActivity(null)
             }
           }}
@@ -1362,6 +1536,136 @@ const resetFilters = () => {
             </ScrollArea>
           </SheetContent>
         </Sheet>
+
+        {/* Password Configuration Dialog */}
+        <Dialog 
+          open={showPasswordConfig}
+          onOpenChange={(open) => {
+            if (!open) handleDialogClose(setShowPasswordConfig);
+          }}
+        >
+          <DialogContent
+            className="sm:max-w-[500px]"
+            aria-describedby="password-config-description"
+          >
+            <DialogHeader>
+              <DialogTitle>Configure Default Password Pattern</DialogTitle>
+              <DialogDescription id="password-config-description">
+                Set the pattern for default passwords. This will be used when creating new users or resetting individual passwords.
+              </DialogDescription>
+            </DialogHeader>
+
+            {!isConfirmStep ? (
+              <div className="space-y-6 py-4">
+                <Alert>
+                  <InfoIcon className="h-4 w-4" />
+                  <AlertTitle>Current Pattern</AlertTitle>
+                  <AlertDescription className="mt-2">
+                    <div className="space-y-2">
+                      <p>Default password format: <span className="font-mono bg-muted px-2 py-1 rounded">1234{tempPattern}</span></p>
+                      <p className="text-sm text-muted-foreground">Where "1234" represents the first 4 digits of the user's ID</p>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-2">
+                  <Label htmlFor="passwordPattern">Password Pattern</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="passwordPattern"
+                      value={tempPattern}
+                      onChange={(e) => setTempPattern(e.target.value)}
+                      placeholder="@emb"
+                      className="font-mono"
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Example: For ID "12345678" and pattern "{tempPattern}", 
+                    the default password will be: <span className="font-mono bg-muted px-1">1234{tempPattern}</span>
+                  </p>
+                </div>
+
+                <Alert>
+                  <InfoIcon className="h-4 w-4" />
+                  <AlertTitle>When is this used?</AlertTitle>
+                  <AlertDescription className="space-y-2 mt-2">
+                    <p>This pattern will be used in two cases:</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      <li>When creating new users</li>
+                      <li>When resetting an individual user's password</li>
+                    </ul>
+                    <p className="text-sm text-muted-foreground">Existing user passwords will not be affected until their password is reset.</p>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : (
+              <div className="space-y-4 py-4">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Security Check</AlertTitle>
+                  <AlertDescription>
+                    This action requires administrator verification to proceed.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>New Pattern Preview</Label>
+                    <div className="p-2 bg-muted rounded-md font-mono text-sm">
+                      Example: 1234{tempPattern}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="adminPassword">Administrator Password</Label>
+                    <Input
+                      id="adminPassword"
+                      type="password"
+                      value={adminPass}
+                      onChange={(e) => {
+                        setAdminPass(e.target.value);
+                        setAdminPassError("");
+                      }}
+                      placeholder="Enter your password"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && adminPass.trim()) {
+                          e.preventDefault();
+                          handleConfirmPattern();
+                        }
+                      }}
+                    />
+                    {adminPassError && (
+                      <p className="text-sm text-destructive">{adminPassError}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  if (isConfirmStep) {
+                    setIsConfirmStep(false);
+                    setAdminPass("");
+                    setAdminPassError("");
+                  } else {
+                    handleDialogClose(setShowPasswordConfig);
+                  }
+                }}
+              >
+                {isConfirmStep ? "Back" : "Cancel"}
+              </Button>
+              <Button 
+                onClick={isConfirmStep ? handleConfirmPattern : handleProceedToConfirm}
+                disabled={isConfirmStep ? !adminPass.trim() : !tempPattern.trim()}
+              >
+                {isConfirmStep ? "Confirm Change" : "Continue"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </SidebarProvider>
     </div>
   )
