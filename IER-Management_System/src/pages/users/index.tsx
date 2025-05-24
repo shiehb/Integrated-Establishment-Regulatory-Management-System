@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { useAuth } from "@/hooks/use-auth"
 import { SiteHeader } from "@/components/site-header"
@@ -51,9 +51,10 @@ import {
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
 
 type User = {
   id: string
@@ -247,6 +248,9 @@ export default function UsersPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [activitySheetOpen, setActivitySheetOpen] = useState(false)
   const [selectedUserActivity, setSelectedUserActivity] = useState<User | null>(null)
+  const [userToReset, setUserToReset] = useState<User | null>(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
 
   const form = useForm<z.infer<typeof userFormSchema>>({
     resolver: zodResolver(userFormSchema),
@@ -278,17 +282,25 @@ const isMatch = (user: User) => {
 
 const processedUsers = users
   .filter((u) => !(u.userlevel === "admin" && u.id_number === currentUser?.id_number))
-  .filter((u) => (filterLevel === "all" ? true : u.userlevel === filterLevel))
-  .filter((u) => (filterStatus === "all" ? true : u.status === filterStatus))
+  .filter((u) => {
+    
+    // Filter by search term
+    if (searchTerm) {
+      return isMatch(u);
+    }
+
+const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
+    const matchesStatus = filterStatus === "all" ? true : u.status === filterStatus;
+    return matchesLevel && matchesStatus;
+  })
   .sort((a, b) => {
-    // First sort by match status (matched items first)
+    // Keep your existing sorting logic
     const aMatch = isMatch(a);
     const bMatch = isMatch(b);
     
     if (aMatch && !bMatch) return -1;
     if (!aMatch && bMatch) return 1;
     
-    //  Existing sorting logic for items with same match status
     let comparison = 0;
     switch (sortField) {
       case "name":
@@ -322,6 +334,44 @@ const processedUsers = users
       setSortField(field)
       setSortDirection("asc")
     }
+  }
+
+  const handleDialogClose = useCallback(() => {
+    setIsAddUserOpen(false)
+    setEditingUser(null)
+    setValidationError(null)
+    setFormData(null)
+    form.reset({
+      name: "",
+      id_number: "",
+      email: "",
+      userlevel: "inspector"
+    })
+  }, [form])
+
+  const handleAddNewClick = useCallback(() => {
+    handleDialogClose()
+    setTimeout(() => {
+      setIsAddUserOpen(true)
+    }, 100)
+  }, [handleDialogClose])
+
+  const handleEditClick = useCallback((user: User) => {
+    handleDialogClose()
+    setTimeout(() => {
+      form.reset({
+        name: user.name,
+        id_number: user.id_number,
+        email: user.email,
+        userlevel: user.userlevel,
+      })
+      setEditingUser(user)
+      setIsAddUserOpen(true)
+    }, 100)
+  }, [form, handleDialogClose])
+
+  const handleEditUser = (user: User) => {
+    handleEditClick(user)
   }
 
   const onSubmit = (data: z.infer<typeof userFormSchema>) => {
@@ -360,12 +410,12 @@ const processedUsers = users
         setEditingUser(null)
         return
       }
+      setFormData(data)
       setShowEditConfirm(true)
     } else {
+      setFormData(data)
       setShowAddConfirm(true)
     }
-
-    setFormData(data)
   }
 
   const confirmAddUser = () => {
@@ -383,9 +433,7 @@ const processedUsers = users
       password: defaultPassword,
     }
     setUsers([...users, newUser])
-    form.reset()
-    setIsAddUserOpen(false)
-    setFormData(null)
+    handleDialogClose()
     setShowAddConfirm(false)
 
     toast.success("User Added", {
@@ -409,10 +457,7 @@ const processedUsers = users
           : u,
       ),
     )
-    form.reset()
-    setIsAddUserOpen(false)
-    setEditingUser(null)
-    setFormData(null)
+    handleDialogClose()
     setShowEditConfirm(false)
 
     toast.success("User Updated", {
@@ -420,10 +465,37 @@ const processedUsers = users
     })
   }
 
+  const toggleUserStatus = (user: User) => {
+    setUserToToggle(null)
+    setTimeout(() => {
+      setUserToToggle(user)
+      setShowStatusConfirm(true)
+    }, 100)
+  }
+
+  const openActivitySheet = (user: User) => {
+    setSelectedUserActivity(null)
+    setActivitySheetOpen(false)
+    setTimeout(() => {
+      setSelectedUserActivity(user)
+      setActivitySheetOpen(true)
+    }, 100)
+  }
+
+  const handleRequestResetPassword = (user: User) => {
+    setUserToReset(null)
+    setShowResetConfirm(false)
+    setTimeout(() => {
+      setUserToReset(user)
+      setShowResetConfirm(true)
+    }, 100)
+  }
+
   const confirmToggleStatus = () => {
     if (!userToToggle) return
 
     const newStatus = userToToggle.status === "active" ? "inactive" : "active"
+    const userCopy = { ...userToToggle }
 
     setUsers(
       users.map((u) =>
@@ -439,7 +511,24 @@ const processedUsers = users
     setShowStatusConfirm(false)
 
     toast.success(`User ${newStatus === "active" ? "Activated" : "Deactivated"}`, {
-      description: `${userToToggle.name} has been ${newStatus === "active" ? "activated" : "deactivated"}.`,
+      description: `${userCopy.name} has been ${newStatus === "active" ? "activated" : "deactivated"}.`,
+    })
+  }
+
+  const confirmResetPassword = () => {
+    if (!userToReset) return
+    
+    const userCopy = { ...userToReset }
+    const defaultPassword = `${userToReset.id_number.substring(0, 4)}@emb`
+    
+    setUsers(users.map((u) => 
+      u.id === userToReset.id ? { ...u, password: defaultPassword } : u
+    ))
+    setUserToReset(null)
+    setShowResetConfirm(false)
+    
+    toast.success("Password Reset", {
+      description: `Password for ${userCopy.name} has been reset to default.`,
     })
   }
 
@@ -480,34 +569,19 @@ const processedUsers = users
     }
   }
 
-  const resetFilters = () => {
-    setSearchTerm("")
-    setFilterLevel("all")
-    setFilterStatus("all")
-    setSortField("name")
-    setSortDirection("asc")
+const resetFilters = () => {
+  setSearchTerm("");
+  setFilterLevel("all");
+  setFilterStatus("all");
+  setSortField("name");
+  setSortDirection("asc");
 
-    toast.info("Filters Reset", {
-      description: "All search filters have been reset.",
-    })
-  }
-
-  const handleEditUser = (user: User) => {
-    setEditingUser(user)
-    form.reset({
-      name: user.name,
-      id_number: user.id_number,
-      email: user.email,
-      userlevel: user.userlevel,
-    })
-    setIsAddUserOpen(true)
-    setValidationError(null)
-  }
-
-  const toggleUserStatus = (user: User) => {
-    setUserToToggle(user)
-    setShowStatusConfirm(true)
-  }
+  toast.info("Filters Reset", {
+    description: searchTerm 
+      ? "Filters cleared for search results" 
+      : "All search filters have been reset",
+  });
+};
 
   const hasFormChanges = () => {
     if (!editingUser) return true
@@ -538,16 +612,35 @@ const processedUsers = users
     setShowCancelConfirm(false)
   }
 
-  const openActivitySheet = (user: User) => {
-    setSelectedUserActivity(user)
-    setActivitySheetOpen(true)
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedUsers(processedUsers.map(user => user.id))
+    } else {
+      setSelectedUsers([])
+    }
+  }
+
+  const toggleUserSelection = (userId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedUsers([...selectedUsers, userId])
+    } else {
+      setSelectedUsers(selectedUsers.filter(id => id !== userId))
+    }
   }
 
   return (
     <div className="[--header-height:calc(theme(spacing.14))]">
       <SidebarProvider className="flex flex-col">
         <SiteHeader 
-          onSearch={(query) => setSearchTerm(query)}
+          onSearch={(query) => {
+            
+            setSearchTerm(query);
+            // Reset filters when searching
+            if (query.trim()) {
+              setFilterLevel("all");
+              setFilterStatus("all");
+            }
+          }}
           searchData={users.map(user => ({
             id: user.id,
             name: user.name,
@@ -560,186 +653,235 @@ const processedUsers = users
           <SidebarInset>
             <div className="flex flex-1 flex-col gap-4 p-2 pt-2 overflow-hidden">
               <Card className="flex flex-col h-full overflow-hidden border">
-                <CardHeader>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <CardTitle className="text-2xl font-bold tracking-tight">User Management</CardTitle>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap gap-2 items-center col-span-1 md:col-span-7">
-                      <Select value={filterLevel} onValueChange={setFilterLevel}>
-                        <SelectTrigger className="w-full sm:w-[150px]">
-                          <SelectValue placeholder="Filter by level" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Levels</SelectItem>
-                          <SelectItem value="admin">Administrator</SelectItem>
-                          <SelectItem value="manager">Manager</SelectItem>
-                          <SelectItem value="inspector">Inspector</SelectItem>
-                        </SelectContent>
-                      </Select>
+                <CardHeader className="px-4 sm:px-6">
+                  <div className="flex flex-col gap-4">
+                    {/* Main Header Row */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      {/* Title and Selected Count */}
+                      <div className="flex flex-col gap-1">
+                        <CardTitle className="text-2xl font-bold tracking-tight">
+                          User Management
+                        </CardTitle>
+                        {selectedUsers.length > 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            {selectedUsers.length} user{selectedUsers.length === 1 ? '' : 's'} selected
+                          </p>
+                        )}
+                      </div>
 
-                      <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger className="w-full sm:w-[150px]">
-                          <SelectValue placeholder="Filter by status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Status</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      {/* Actions Group */}
+                      <div className="flex flex-col-reverse sm:flex-row w-full sm:w-auto gap-3">
+                        {/* Filters Group */}
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select value={filterLevel} onValueChange={setFilterLevel}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Level" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Levels</SelectItem>
+                                <SelectItem value="admin">Administrator</SelectItem>
+                                <SelectItem value="manager">Manager</SelectItem>
+                                <SelectItem value="inspector">Inspector</SelectItem>
+                              </SelectContent>
+                            </Select>
 
-                      <Button variant="outline" onClick={resetFilters} size="sm" className="w-full sm:w-auto">
-                        Reset Filters
-                      </Button>
-                    </div>
-                    
-                    <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          onClick={() => {
-                            setEditingUser(null)
-                            form.reset({
-                              name: "",
-                              id_number: "",
-                              email: "",
-                              userlevel: "inspector",
-                            })
-                            setValidationError(null)
+                            <Select value={filterStatus} onValueChange={setFilterStatus}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Status</SelectItem>
+                                <SelectItem value="active">Active</SelectItem>
+                                <SelectItem value="inactive">Inactive</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            onClick={resetFilters}
+                            className="w-full sm:w-auto"
+                          >
+                            Reset Filters
+                          </Button>
+                        </div>
+
+                        {/* Add User Button with Dialog - Completely Preserved */}
+                        <Dialog 
+                          open={isAddUserOpen} 
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              handleDialogClose()
+                            }
                           }}
                         >
-                          <UserPlus className="mr-2 h-4 w-4" />
-                          Add User
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[500px]">
-                        <DialogHeader>
-                          <DialogTitle>{editingUser ? "Edit User" : "Add New User"}</DialogTitle>
-                          <DialogDescription>
-                            {editingUser
-                              ? "Update user information and access level."
-                              : "Fill in the details to create a new user."}
-                          </DialogDescription>
-                        </DialogHeader>
+                          <DialogTrigger asChild>
+                            <Button
+                              className="w-full sm:w-auto"
+                              onClick={handleAddNewClick}
+                            >
+                              <UserPlus className="mr-2 h-4 w-4" />
+                              Add User
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-[500px]">
+                            <DialogHeader>
+                              <DialogTitle>
+                                {editingUser ? "Edit User" : "Add New User"}
+                              </DialogTitle>
+                              <DialogDescription>
+                                {editingUser
+                                  ? "Update user information and access level."
+                                  : "Fill in the details to create a new user."}
+                              </DialogDescription>
+                            </DialogHeader>
 
-                        {validationError && (
-                          <Alert variant="destructive" className="mb-4">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertDescription>{validationError}</AlertDescription>
-                          </Alert>
-                        )}
+                            {validationError && (
+                              <Alert variant="destructive" className="mb-4">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{validationError}</AlertDescription>
+                              </Alert>
+                            )}
 
-                        {editingUser && (
-                          <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-800">
-                            <AlertCircle className="h-4 w-4 text-amber-600" />
-                            <AlertTitle>Editing User</AlertTitle>
-                            <AlertDescription>You are updating information for user: {editingUser.name}</AlertDescription>
-                          </Alert>
-                        )}
-
-                        <Form {...form}>
-                          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                            <FormField
-                              control={form.control}
-                              name="name"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Full Name</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="John Doe" 
-                                      {...field} 
-                                      ref={nameInputRef}
-                                      className="focus-visible:ring-2 focus-visible:ring-green-500 border"
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name="id_number"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>ID Number</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="12345678" 
-                                      {...field} 
-                                      className="focus-visible:ring-2 focus-visible:ring-green-500 border"
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name="email"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Email</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="user@emb.gov.ph" 
-                                      {...field} 
-                                      className="focus-visible:ring-2 focus-visible:ring-green-500 border"
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name="userlevel"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>User Level</FormLabel>
-                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                      <SelectTrigger className="focus-visible:ring-2 focus-visible:ring-green-500 border">
-                                        <SelectValue placeholder="Select user level" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      <SelectItem value="admin">Administrator</SelectItem>
-                                      <SelectItem value="manager">Manager</SelectItem>
-                                      <SelectItem value="inspector">Inspector</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            {!editingUser && (
-                              <Alert>
-                                <InfoIcon className="h-4 w-4" />
-                                <AlertTitle>Default Password</AlertTitle>
+                            {editingUser && (
+                              <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-800">
+                                <AlertCircle className="h-4 w-4 text-amber-600" />
+                                <AlertTitle>Editing User</AlertTitle>
                                 <AlertDescription>
-                                  A default password will be generated using the first 4 digits of the ID number followed
-                                  by "@emb"
+                                  You are updating information for user: {editingUser.name}
                                 </AlertDescription>
                               </Alert>
                             )}
-                            <DialogFooter className="gap-2">
-                              <Button variant="outline" type="button" onClick={handleCancelForm}>
-                                Cancel
-                              </Button>
-                              <Button type="submit">{editingUser ? "Update User" : "Add User"}</Button>
-                            </DialogFooter>
-                          </form>
-                        </Form>
-                      </DialogContent>
-                    </Dialog>
+
+                            <Form {...form}>
+                              <form
+                                onSubmit={form.handleSubmit(onSubmit)}
+                                className="space-y-4"
+                              >
+                                <FormField
+                                  control={form.control}
+                                  name="name"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Full Name</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="John Doe"
+                                          {...field}
+                                          ref={nameInputRef}
+                                          className="focus-visible:ring-2 focus-visible:ring-green-500 border"
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name="id_number"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>ID Number</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="12345678"
+                                          {...field}
+                                          className="focus-visible:ring-2 focus-visible:ring-green-500 border"
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name="email"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Email</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="user@emb.gov.ph"
+                                          {...field}
+                                          className="focus-visible:ring-2 focus-visible:ring-green-500 border"
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name="userlevel"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>User Level</FormLabel>
+                                      <Select
+                                        onValueChange={field.onChange}
+                                        defaultValue={field.value}
+                                      >
+                                        <FormControl>
+                                          <SelectTrigger className="focus-visible:ring-2 focus-visible:ring-green-500 border">
+                                            <SelectValue placeholder="Select user level" />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                          <SelectItem value="admin">Administrator</SelectItem>
+                                          <SelectItem value="manager">Manager</SelectItem>
+                                          <SelectItem value="inspector">Inspector</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                {!editingUser && (
+                                  <Alert>
+                                    <InfoIcon className="h-4 w-4" />
+                                    <AlertTitle>Default Password</AlertTitle>
+                                    <AlertDescription>
+                                      A default password will be generated using the first 4
+                                      digits of the ID number followed by "@emb"
+                                    </AlertDescription>
+                                  </Alert>
+                                )}
+                                <DialogFooter className="gap-2">
+                                  <Button
+                                    variant="outline"
+                                    type="button"
+                                    onClick={handleCancelForm}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button type="submit">
+                                    {editingUser ? "Update User" : "Add User"}
+                                  </Button>
+                                </DialogFooter>
+                              </form>
+                            </Form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
                   </div>
                 </CardHeader>
+
                 <CardContent className="flex flex-col flex-1 overflow-hidden">
                   <div className="rounded-md border flex-1 flex flex-col overflow-hidden">
                     <Table className="table-fixed">
                       <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
+                          <TableHead className="w-[50px] text-left px-4">
+                            <Checkbox 
+                              checked={
+                                processedUsers.length > 0 && selectedUsers.length === processedUsers.length
+                              }
+                              onCheckedChange={toggleSelectAll}
+                              aria-label="Select all"
+                              className="translate-y-[2px]"
+                            />
+                          </TableHead>
                           <TableHead className="w-3/12 text-left px-4 cursor-pointer" onClick={() => handleSort("name")}>
                             <div className="flex items-center">
                               Name
@@ -804,13 +946,23 @@ const processedUsers = users
                           <TableBody>
                             {processedUsers.map((user) => (
                               <TableRow 
-                                  key={user.id} 
-                                    className={cn(
-                                      "hover:bg-green-50 dark:hover:bg-green-900/10 border-green-200 dark:border-green-800",
-                                      isMatch(user) ?
-                                      "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-600" : ""
-                                    )}
-                                  >
+                                key={user.id} 
+                                className={cn(
+                                  "hover:bg-green-100 dark:hover:bg-green-900/10 border-green-200 dark:border-green-800",
+                                  isMatch(user) ?
+                                  "bg-yellow-100 dark:bg-yellow-900/20 border border-green-600 dark:border-yellow-600" : "",
+                                  selectedUsers.includes(user.id) && 
+                                  "bg-green-50 dark:bg-green-900/20"
+                                )}
+                              >
+                                <TableCell className="w-[50px] px-4">
+                                  <Checkbox 
+                                    checked={selectedUsers.includes(user.id)}
+                                    onCheckedChange={(checked) => toggleUserSelection(user.id, checked as boolean)}
+                                    aria-label={`Select ${user.name}`}
+                                    className="translate-y-[2px]"
+                                  />
+                                </TableCell>
                                 <TableCell className="w-3/12 px-4 font-medium">{user.name}</TableCell>
                                 <TableCell className="w-2/12 text-center px-4">{user.id_number}</TableCell>
                                 <TableCell className="w-3/12 px-4 hidden md:table-cell">{user.email}</TableCell>
@@ -869,6 +1021,11 @@ const processedUsers = users
                                         <Calendar className="mr-2 h-4 w-4" />
                                         View Activity
                                       </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleRequestResetPassword(user)}>
+                                          <ShieldCheck className="mr-2 h-4 w-4 text-blue-500" />
+                                          <span className="text-blue-500">Reset Password</span>
+                                        </DropdownMenuItem>
+
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </TableCell>
@@ -903,22 +1060,84 @@ const processedUsers = users
           </DialogContent>
         </Dialog>
 
-        <Dialog open={showEditConfirm} onOpenChange={setShowEditConfirm}>
+        <Dialog open={showEditConfirm} onOpenChange={(open) => {
+          if (!open) {
+            setShowEditConfirm(false)
+          }
+        }}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Confirm User Changes</DialogTitle>
-              <DialogDescription>Are you sure you want to update this user's information?</DialogDescription>
+              <DialogDescription>
+                {editingUser && formData && (
+                  <div className="space-y-4 mt-4">
+                    <Alert>
+                      <InfoIcon className="h-4 w-4" />
+                      <AlertTitle>Review Changes</AlertTitle>
+                      <AlertDescription>
+                        Please review the following changes for user: {editingUser.name}
+                      </AlertDescription>
+                    </Alert>
+                    
+                    {editingUser.name !== formData.name && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">Name:</span>
+                        <span className="line-through text-muted-foreground">{editingUser.name}</span>
+                        <span className="text-green-600">→</span>
+                        <span className="text-green-600">{formData.name}</span>
+                      </div>
+                    )}
+                    
+                    {editingUser.id_number !== formData.id_number && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">ID Number:</span>
+                        <span className="line-through text-muted-foreground">{editingUser.id_number}</span>
+                        <span className="text-green-600">→</span>
+                        <span className="text-green-600">{formData.id_number}</span>
+                      </div>
+                    )}
+                    
+                    {editingUser.email !== formData.email && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">Email:</span>
+                        <span className="line-through text-muted-foreground">{editingUser.email}</span>
+                        <span className="text-green-600">→</span>
+                        <span className="text-green-600">{formData.email}</span>
+                      </div>
+                    )}
+                    
+                    {editingUser.userlevel !== formData.userlevel && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">User Level:</span>
+                        <span className="line-through text-muted-foreground capitalize">{editingUser.userlevel}</span>
+                        <span className="text-green-600">→</span>
+                        <span className="text-green-600 capitalize">{formData.userlevel}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </DialogDescription>
             </DialogHeader>
-            <DialogFooter>
+            <DialogFooter className="gap-2 mt-4">
               <Button variant="outline" onClick={() => setShowEditConfirm(false)}>
                 Cancel
               </Button>
-              <Button onClick={confirmEditUser}>Confirm</Button>
+              <Button onClick={confirmEditUser}>
+                Confirm Changes
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        <Dialog open={showStatusConfirm} onOpenChange={setShowStatusConfirm}>
+        <Dialog 
+          open={showStatusConfirm} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowStatusConfirm(false)
+              setUserToToggle(null)
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>{userToToggle?.status === "active" ? "Deactivation" : "Activation"}</DialogTitle>
@@ -955,103 +1174,181 @@ const processedUsers = users
           </DialogContent>
         </Dialog>
 
+        {/* Reset Password Confirmation Dialog */}
+        <Dialog 
+          open={showResetConfirm} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowResetConfirm(false)
+              setUserToReset(null)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold text-foreground">
+                Reset Password
+              </DialogTitle>
+              <DialogDescription>
+                <div className="text-sm text-muted-foreground space-y-2">
+                  <p>
+                    This will reset the user's password to the default format:
+                    <span className="font-semibold text-foreground"> first 4 digits of their ID + "@emb"</span>.
+                  </p>
+                  <p>
+                    Are you sure you want to proceed? The user will need to change their password after logging in.
+                  </p>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowResetConfirm(false)}>
+                Cancel
+              </Button>
+              <Button  onClick={confirmResetPassword}>
+                Confirm Reset
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        <Sheet open={activitySheetOpen} onOpenChange={setActivitySheetOpen}>
+        {/* User Activity Log Sheet */}
+        <Sheet 
+          open={activitySheetOpen} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setActivitySheetOpen(false)
+              setSelectedUserActivity(null)
+            }
+          }}
+        >
           <SheetContent className="w-full sm:max-w-md md:max-w-lg">
-            <SheetHeader className="pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <SheetTitle className="flex items-center gap-2 text-lg">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    User Activity Log
-                  </SheetTitle>
-                  <SheetDescription className="mt-2">
-                    {selectedUserActivity && (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{selectedUserActivity.name}</span>
-                          </div>
-                          <Badge 
-                            variant="outline" 
-                            className="px-2 py-0.5 text-xs font-normal border-muted-foreground/30"
-                          >
-                            ID: {selectedUserActivity.id_number}
-                          </Badge>
+            <SheetHeader className="space-y-4">
+              {selectedUserActivity && (
+                <div className="space-y-4">
+                  {/* User Profile Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1.5">
+                      <SheetTitle className="text-2xl font-semibold">
+                        Activity Log
+                      </SheetTitle>
+                      <div className="flex items-center gap-2">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <User className="h-5 w-5 text-primary" />
                         </div>
-                        <div className="flex items-center gap-2">
-                          {getUserLevelBadge(selectedUserActivity.userlevel)}
-                          <Badge 
-                            variant={selectedUserActivity.status === "active" ? "default" : "destructive"}
-                            className="px-2 py-0.5 text-xs"
-                          >
-                            {selectedUserActivity.status === "active" ? "Active" : "Inactive"}
-                          </Badge>
+                        <div>
+                          <h3 className="font-medium leading-none">{selectedUserActivity.name}</h3>
+                          <p className="text-sm text-muted-foreground">{selectedUserActivity.email}</p>
                         </div>
                       </div>
-                    )}
-                  </SheetDescription>
+                    </div>
+                    <div className="space-y-2">
+                      <Badge 
+                        variant="outline" 
+                        className="px-2 py-1 text-xs font-normal border-muted-foreground/30"
+                      >
+                        ID: {selectedUserActivity.id_number}
+                      </Badge>
+                      <div className="flex flex-col gap-1.5">
+                        {getUserLevelBadge(selectedUserActivity.userlevel)}
+                        <Badge 
+                          variant={selectedUserActivity.status === "active" ? "default" : "destructive"}
+                          className="w-full justify-center"
+                        >
+                          {selectedUserActivity.status === "active" ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Account Info */}
+                  <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <div className="p-4 space-y-3">
+                      <h4 className="font-medium leading-none flex items-center gap-2">
+                        <InfoIcon className="h-4 w-4 text-muted-foreground" />
+                        Account Information
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Created</p>
+                          <p className="font-medium">{format(selectedUserActivity.createdAt, "MMM d, yyyy")}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Last Activity</p>
+                          <p className="font-medium">Today, 2:30 PM</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Total Logins</p>
+                          <p className="font-medium">24</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Last Login</p>
+                          <p className="font-medium">2 hours ago</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 -mt-1 -mr-2"
-                  onClick={() => setActivitySheetOpen(false)}
-                >
-                </Button>
-              </div>
+              )}
             </SheetHeader>
 
-            <Separator className="my-3" />
+            <Separator className="my-4" />
 
-            <ScrollArea className="h-[calc(100vh-220px)]">
-              <div className="px-1 py-2 space-y-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Activity Timeline</span>
+              </div>
+            </div>
+
+            <ScrollArea className="h-[calc(100vh-380px)] mt-6">
+              <div className="space-y-8 pr-4 pb-8">
                 {activityGroups.map((group, groupIndex) => (
-                  <div key={groupIndex} className="group">
+                  <div key={groupIndex} className="space-y-6">
                     {/* Date header */}
-                    <div className="sticky top-0 z-10 flex items-center mb-3 bg-background/95 backdrop-blur">
-                      <div className="h-px flex-1 bg-border" />
-                      <span className="px-3 text-xs font-medium text-muted-foreground tracking-wider">
-                        {group.date}
-                      </span>
-                      <div className="h-px flex-1 bg-border" />
-                    </div>
+                    <h4 className="text-sm font-medium text-muted-foreground sticky top-0 bg-background/95 backdrop-blur z-10 py-2 -mx-6 px-6">
+                      {group.date}
+                    </h4>
                     
                     {/* Activities list */}
-                    <div className="space-y-4 pl-4 border-l-2 border-muted-foreground/20">
+                    <div className="space-y-6 px-1">
                       {group.activities.map((activity, activityIndex) => (
-                        <div key={activityIndex} className="relative">
-                          {/* Timeline dot */}
-                          <div className={cn(
-                            "absolute -left-[9px] top-3 h-3 w-3 rounded-full border-2 bg-background",
-                            activity.type === "Login" ? "border-green-500" :
-                            activity.type === "Profile Update" ? "border-blue-500" :
-                            activity.type === "Password Change" ? "border-amber-500" :
-                            "border-purple-500"
-                          )} />
-                          
-                          <div className="ml-4 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <h4 className="text-sm font-medium">
-                                  {activity.type}
-                                </h4>
-                                {activity.important && (
-                                  <Badge variant="destructive" className="px-1.5 py-0 text-xs">
-                                    Important
-                                  </Badge>
-                                )}
+                        <div 
+                          key={activityIndex} 
+                          className={cn(
+                            "rounded-lg border bg-card text-card-foreground shadow-sm",
+                            activity.important && "border-destructive/50 bg-destructive/5"
+                          )}
+                        >
+                          <div className="p-5 space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "h-9 w-9 rounded-full flex items-center justify-center",
+                                  activity.type === "Login" ? "bg-green-100 text-green-700" :
+                                  activity.type === "Profile Update" ? "bg-blue-100 text-blue-700" :
+                                  activity.type === "Password Change" ? "bg-amber-100 text-amber-700" :
+                                  "bg-purple-100 text-purple-700"
+                                )}>
+                                  {activity.type === "Login" && <User className="h-4 w-4" />}
+                                  {activity.type === "Profile Update" && <Pencil className="h-4 w-4" />}
+                                  {activity.type === "Password Change" && <ShieldCheck className="h-4 w-4" />}
+                                  {activity.type === "System Access" && <Activity className="h-4 w-4" />}
+                                </div>
+                                <div>
+                                  <p className="font-medium leading-none">{activity.type}</p>
+                                  <p className="text-sm text-muted-foreground mt-1">{activity.time}</p>
+                                </div>
                               </div>
-                              <span className="text-xs text-muted-foreground">
-                                {activity.time}
-                              </span>
+                              {activity.important && (
+                                <Badge variant="destructive" className="ml-2">Important</Badge>
+                              )}
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              {activity.description}
-                            </p>
+                            <p className="text-sm leading-relaxed">{activity.description}</p>
                             {activity.details && (
-                              <div className="mt-1 p-2 text-xs rounded bg-muted/50">
+                              <div className="text-sm bg-muted/50 rounded-md p-4 font-mono">
                                 {activity.details}
                               </div>
                             )}
