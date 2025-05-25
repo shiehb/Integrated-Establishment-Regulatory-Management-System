@@ -37,7 +37,7 @@ interface SiteHeaderProps {
 
 export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
   const { toggleSidebar } = useSidebar()
-  const [, setLocation] = useLocation()
+  const [location, setLocation] = useLocation()
   const [searchQuery, setSearchQuery] = useState("")
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -104,7 +104,7 @@ export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
   return (
     <TooltipProvider>
       <header className="bg-background sticky top-0 z-50 flex w-full items-center border-b">
-        <div className="flex h-(--header-height) w-full items-center gap-2 px-4">
+        <div className="flex h-(--header-height) w-full items-center gap-2 px-2">
           {/* Sidebar Toggle with Tooltip */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -115,11 +115,11 @@ export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
                 onClick={toggleSidebar}
               >
                 <Menu className="h-4 w-4" />
-                <span className="sr-only">Toggle sidebar</span>
+                <span className="sr-only">Toggle Sidebar</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="center">
-              <p>Toggle sidebar</p>
+              <p>Toggle Sidebar</p>
             </TooltipContent>
           </Tooltip>
 
@@ -144,13 +144,14 @@ export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
                     setSearchQuery(e.target.value)
                     setIsSuggestionsOpen(e.target.value.length > 0)
                   }}
+                  
                   onFocus={() => searchQuery.length > 0 && setIsSuggestionsOpen(true)}
                 />
               </div>
             </form>
 
-            {isSuggestionsOpen && (
-              <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-lg">
+           {isSuggestionsOpen && location === "/users" && (
+  <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-lg">
                 <Command>
                   <CommandList>
                     <CommandGroup heading="Users">
