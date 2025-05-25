@@ -1,27 +1,21 @@
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
-import { useAuth } from "@/hooks/use-auth"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ShieldAlert, ShieldCheck, Activity, Mail, BadgeIcon as IdCard, Calendar, Pencil, Key } from "lucide-react"
 import { format } from "date-fns"
 import { useSafeNavigation } from "@/hooks/use-safe-navigation"
+import { SiteHeader } from "@/components/site-header"
+import { useUser } from "@/hooks/use-user"
+import { useAvatar } from "@/hooks/use-avatar"
 
 export default function ProfilePage() {
-  const { user } = useAuth()
+  const { user } = useUser()
+  const { avatarUrl } = useAvatar()
   const { navigate } = useSafeNavigation()
 
   // Mock creation date for the profile
@@ -61,26 +55,12 @@ export default function ProfilePage() {
   }
 
   return (
-    <SidebarProvider>
+    <div className="[--header-height:calc(theme(spacing.14))]">
+    <SidebarProvider className="flex flex-col">
+      <SiteHeader />
+      <div className="flex flex-1">
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>My Profile</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-        </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           <div className="flex flex-col gap-2">
             <h1 className="text-2xl font-bold tracking-tight">My Profile</h1>
@@ -92,8 +72,11 @@ export default function ProfilePage() {
               <CardHeader className="text-center">
                 <div className="flex justify-center mb-4">
                   <Avatar className="h-24 w-24">
-                    <AvatarImage src="/placeholder.svg?height=96&width=96" alt={user.name} />
-                    <AvatarFallback className="text-2xl">{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                    {avatarUrl ? (
+                      <AvatarImage src={avatarUrl} alt={user.name} />
+                    ) : (
+                      <AvatarFallback className="text-2xl">{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                    )}
                   </Avatar>
                 </div>
                 <CardTitle>{user.name}</CardTitle>
@@ -102,7 +85,7 @@ export default function ProfilePage() {
               <CardContent className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{`${user.id_number}@emb.gov.ph`}</span>
+                  <span>{user.email}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <IdCard className="h-4 w-4 text-muted-foreground" />
@@ -138,7 +121,7 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <h3 className="font-medium text-sm text-muted-foreground">Email Address</h3>
-                    <p>{`${user.id_number}@emb.gov.ph`}</p>
+                    <p>{user.email}</p>
                   </div>
                   <div>
                     <h3 className="font-medium text-sm text-muted-foreground">ID Number</h3>
@@ -174,6 +157,8 @@ export default function ProfilePage() {
           </div>
         </div>
       </SidebarInset>
+      </div>
     </SidebarProvider>
+    </div>
   )
 }

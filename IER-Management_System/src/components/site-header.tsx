@@ -15,6 +15,8 @@ import { useSidebar } from "@/components/ui/sidebar"
 import { Input } from "@/components/ui/input"
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown"
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
+import { useAvatar } from "@/hooks/use-avatar"
+import { useUser } from "@/hooks/use-user"
 import Fuse from "fuse.js"
 import {
   Tooltip,
@@ -39,11 +41,16 @@ export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const { avatarUrl } = useAvatar()
+  const { user } = useUser()
 
-  const user = {
-    name: "Admin",
-    email: "12345678@emb.gov.ph",
-    avatar: "/assets/DENR-Logo.svg",
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2)
   }
 
   const handleLogout = () => {
@@ -104,10 +111,10 @@ export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="mr-2"
+                className="mr-2 flex items-center justify-center"
                 onClick={toggleSidebar}
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-4 w-4" />
                 <span className="sr-only">Toggle sidebar</span>
               </Button>
             </TooltipTrigger>
@@ -189,12 +196,15 @@ export function SiteHeader({ onSearch, searchData }: SiteHeaderProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 flex items-center gap-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar} alt={user.name || "User"} />
-                  <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
+                  {avatarUrl ? (
+                    <AvatarImage src={avatarUrl || undefined} alt={user?.name || ""} />
+                  ) : (
+                    <AvatarFallback>{user?.name ? getInitials(user.name) : "U"}</AvatarFallback>
+                  )}
                 </Avatar>
                 <div className="hidden md:flex md:flex-col md:items-start md:leading-none">
                   <span className="text-sm font-medium">{user?.name || "User"}</span>
-                  <span className="text-xs text-muted-foreground">{user.email || "User"}</span>
+                  <span className="text-xs text-muted-foreground">{user?.email || "user@example.com"}</span>
                 </div>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </Button>

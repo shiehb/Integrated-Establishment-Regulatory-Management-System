@@ -48,6 +48,7 @@ import {
   CheckCircle,
   InfoIcon,
   User,
+  FileDown,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
@@ -56,6 +57,7 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import * as XLSX from 'xlsx'
 
 type User = {
   id: string
@@ -258,6 +260,15 @@ export default function UsersPage() {
   const [passwordPattern, setPasswordPattern] = useState("@emb")
   const [isConfirmStep, setIsConfirmStep] = useState(false)
   const [tempPattern, setTempPattern] = useState("@emb")
+  const [showExportConfirm, setShowExportConfirm] = useState(false)
+  const [selectedFields, setSelectedFields] = useState({
+    name: true,
+    id: true,
+    email: true,
+    role: true,
+    status: true,
+    createdDate: true
+  })
 
   const form = useForm<z.infer<typeof userFormSchema>>({
     resolver: zodResolver(userFormSchema),
@@ -343,19 +354,31 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
     }
   }
 
-  const handleDialogClose = (dialogStateSetter: (value: boolean) => void) => {
-    // First close the dialog
-    dialogStateSetter(false);
-    
-    // Then clean up any associated states after a short delay
+  const resetAllStates = useCallback(() => {
+    setShowResetDialog(false)
+    setSelectedUser(null)
+    setAdminPass("")
+    setAdminPassError("")
+  }, [])
+
+  const handleCloseConfig = useCallback(() => {
+    setShowPasswordConfig(false)
+    setIsConfirmStep(false)
+    setTempPattern(passwordPattern)
+    setAdminPass("")
+    setAdminPassError("")
+  }, [passwordPattern])
+
+  const handleDialogClose = useCallback((dialogStateSetter: (value: boolean) => void) => {
+    dialogStateSetter(false)
     setTimeout(() => {
       if (dialogStateSetter === setShowResetDialog) {
-        resetAllStates();
+        resetAllStates()
       } else if (dialogStateSetter === setShowPasswordConfig) {
-        handleCloseConfig();
+        handleCloseConfig()
       }
-    }, 100);
-  };
+    }, 100)
+  }, [resetAllStates, handleCloseConfig])
 
   const handleAddNewClick = useCallback(() => {
     handleDialogClose(setIsAddUserOpen)
@@ -536,13 +559,6 @@ const matchesLevel = filterLevel === "all" ? true : u.userlevel === filterLevel;
     }, 100)
   }
 
-  const resetAllStates = () => {
-    setShowResetDialog(false)
-    setSelectedUser(null)
-    setAdminPass("")
-    setAdminPassError("")
-  }
-
   const cleanupResetDialog = () => {
     setShowResetDialog(false);
     setSelectedUser(null);
@@ -711,12 +727,73 @@ const resetFilters = () => {
     }
   }
 
-  const handleCloseConfig = () => {
-    setShowPasswordConfig(false);
-    setIsConfirmStep(false);
-    setTempPattern(passwordPattern);
-    setAdminPass("");
-    setAdminPassError("");
+  const handleExportToExcel = () => {
+    setSelectedFields({
+      name: true,
+      id: true,
+      email: true,
+      role: true,
+      status: true,
+      createdDate: true
+    })
+    setShowExportConfirm(true)
+  }
+
+  const confirmExport = () => {
+    // Get selected users data
+    const selectedUsersData = users.filter(user => selectedUsers.includes(user.id))
+    
+    // Create export data based on selected fields
+    const exportData = selectedUsersData.map(user => {
+      const data: Record<string, string> = {}
+      
+      if (selectedFields.name) data['Name'] = user.name
+      if (selectedFields.id) data['ID'] = user.id_number
+      if (selectedFields.email) data['Email'] = user.email
+      if (selectedFields.role) data['Role'] = user.userlevel.charAt(0).toUpperCase() + user.userlevel.slice(1)
+      if (selectedFields.status) data['Status'] = user.status.charAt(0).toUpperCase() + user.status.slice(1)
+      if (selectedFields.createdDate) data['Created Date'] = format(user.createdAt, "MMM d, yyyy")
+      
+      return data
+    })
+
+    try {
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData)
+
+      // Set column widths based on selected fields
+      const colWidths: Array<{ wch: number }> = []
+      if (selectedFields.name) colWidths.push({ wch: 20 })
+      if (selectedFields.id) colWidths.push({ wch: 15 })
+      if (selectedFields.email) colWidths.push({ wch: 30 })
+      if (selectedFields.role) colWidths.push({ wch: 15 })
+      if (selectedFields.status) colWidths.push({ wch: 10 })
+      if (selectedFields.createdDate) colWidths.push({ wch: 15 })
+      
+      ws['!cols'] = colWidths
+
+      // Create workbook
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Users")
+
+      // Generate filename with current date
+      const dateStr = format(new Date(), "yyyy-MM-dd")
+      const filename = `users_export_${dateStr}.xlsx`
+
+      // Save file
+      XLSX.writeFile(wb, filename)
+
+      // Close dialog and show success message
+      setShowExportConfirm(false)
+      toast.success("Export Successful", {
+        description: `${selectedUsers.length} user${selectedUsers.length === 1 ? '' : 's'} exported to Excel.`,
+      })
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error("Export Failed", {
+        description: "There was an error exporting the data. Please try again.",
+      })
+    }
   }
 
   return (
@@ -746,23 +823,25 @@ const resetFilters = () => {
               <Card className="flex flex-col h-full overflow-hidden border">
                 <CardHeader className="px-4 sm:px-6">
                   <div className="flex flex-col gap-4">
-                    {/* Main Header Row */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      {/* Title and Selected Count */}
                       <div className="flex flex-col gap-1">
                         <CardTitle className="text-2xl font-bold tracking-tight">
                           User Management
                         </CardTitle>
-                        {selectedUsers.length > 0 && (
-                          <p className="text-sm text-muted-foreground">
-                            {selectedUsers.length} user{selectedUsers.length === 1 ? '' : 's'} selected
-                          </p>
-                        )}
                       </div>
 
-                      {/* Actions Group */}
                       <div className="flex flex-col-reverse sm:flex-row w-full sm:w-auto gap-3">
-                        {/* Filters Group */}
+                        {selectedUsers.length > 0 && (
+                          <Button
+                            variant="outline"
+                            onClick={handleExportToExcel}
+                            className="w-full sm:w-auto"
+                          >
+                            <FileDown className="mr-2 h-4 w-4" />
+                            Export Selected ({selectedUsers.length})
+                          </Button>
+                        )}
+                        
                         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                           <div className="grid grid-cols-2 gap-2">
                             <Select value={filterLevel} onValueChange={setFilterLevel}>
@@ -770,7 +849,7 @@ const resetFilters = () => {
                                 <SelectValue placeholder="Level" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="all">All Levels</SelectItem>
+                                <SelectItem value="all">User Level</SelectItem>
                                 <SelectItem value="admin">Administrator</SelectItem>
                                 <SelectItem value="manager">Manager</SelectItem>
                                 <SelectItem value="inspector">Inspector</SelectItem>
@@ -782,7 +861,7 @@ const resetFilters = () => {
                                 <SelectValue placeholder="Status" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="all">All Status</SelectItem>
+                                <SelectItem value="all">Status</SelectItem>
                                 <SelectItem value="active">Active</SelectItem>
                                 <SelectItem value="inactive">Inactive</SelectItem>
                               </SelectContent>
@@ -807,7 +886,6 @@ const resetFilters = () => {
                           </Button>
                         </div>
 
-                        {/* Add User Button with Dialog - Completely Preserved */}
                         <Dialog 
                           open={isAddUserOpen} 
                           onOpenChange={(open) => {
@@ -975,7 +1053,7 @@ const resetFilters = () => {
                     <Table className="table-fixed">
                       <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
-                          <TableHead className="w-[50px] text-left px-4">
+                          <TableHead className="w-[50px] px-4 text-left">
                             <Checkbox 
                               checked={
                                 processedUsers.length > 0 && selectedUsers.length === processedUsers.length
@@ -985,23 +1063,23 @@ const resetFilters = () => {
                               className="translate-y-[2px]"
                             />
                           </TableHead>
-                          <TableHead className="w-3/12 text-left px-4 cursor-pointer" onClick={() => handleSort("name")}>
+                          <TableHead className="min-w-[200px] w-[25%] px-4 text-left cursor-pointer" onClick={() => handleSort("name")}>
                             <div className="flex items-center">
                               Name
                               <ArrowUpDown className="ml-2 h-4 w-4" />
                             </div>
                           </TableHead>
                           <TableHead
-                            className="w-2/12 text-center px-4 cursor-pointer"
+                            className="w-[120px] px-4 text-left cursor-pointer"
                             onClick={() => handleSort("id_number")}
                           >
-                            <div className="flex items-center justify-center">
+                            <div className="flex items-center">
                               ID
                               <ArrowUpDown className="ml-2 h-4 w-4" />
                             </div>
                           </TableHead>
                           <TableHead
-                            className="w-3/12 text-left px-4 cursor-pointer hidden md:table-cell"
+                            className="min-w-[200px] w-[25%] px-4 text-left cursor-pointer hidden md:table-cell"
                             onClick={() => handleSort("email")}
                           >
                             <div className="flex items-center">
@@ -1010,7 +1088,7 @@ const resetFilters = () => {
                             </div>
                           </TableHead>
                           <TableHead
-                            className="w-2/12 text-center px-4 cursor-pointer"
+                            className="w-[140px] px-4 text-center cursor-pointer"
                             onClick={() => handleSort("userlevel")}
                           >
                             <div className="flex items-center justify-center">
@@ -1019,7 +1097,7 @@ const resetFilters = () => {
                             </div>
                           </TableHead>
                           <TableHead
-                            className="w-2/12 text-left px-4 cursor-pointer hidden md:table-cell"
+                            className="w-[140px] px-4 text-left cursor-pointer hidden md:table-cell"
                             onClick={() => handleSort("createdAt")}
                           >
                             <div className="flex items-center">
@@ -1028,7 +1106,7 @@ const resetFilters = () => {
                             </div>
                           </TableHead>
                           <TableHead
-                            className="w-2/12 text-left px-4 cursor-pointer"
+                            className="w-[100px] px-4 text-center cursor-pointer"
                             onClick={() => handleSort("status")}
                           >
                             <div className="flex items-center justify-center">
@@ -1036,7 +1114,7 @@ const resetFilters = () => {
                               <ArrowUpDown className="ml-2 h-4 w-4" />
                             </div>
                           </TableHead>
-                          <TableHead className="w-1/12 text-right px-4">
+                          <TableHead className="w-[60px] px-4 text-right">
                             <span className="sr-only">Actions</span>
                           </TableHead>
                         </TableRow>
@@ -1066,19 +1144,19 @@ const resetFilters = () => {
                                     className="translate-y-[2px]"
                                   />
                                 </TableCell>
-                                <TableCell className="w-3/12 px-4 font-medium">{user.name}</TableCell>
-                                <TableCell className="w-2/12 text-center px-4">{user.id_number}</TableCell>
-                                <TableCell className="w-3/12 px-4 hidden md:table-cell">{user.email}</TableCell>
-                                <TableCell className="w-2/12 px-4">
+                                <TableCell className="min-w-[200px] w-[25%] px-4 font-medium truncate">{user.name}</TableCell>
+                                <TableCell className="w-[120px] px-4 text-left">{user.id_number}</TableCell>
+                                <TableCell className="min-w-[200px] w-[25%] px-4 hidden md:table-cell truncate">{user.email}</TableCell>
+                                <TableCell className="w-[140px] px-4">
                                   <div className="flex justify-center">{getUserLevelBadge(user.userlevel)}</div>
                                 </TableCell>
-                                <TableCell className="w-2/12 px-4 hidden md:table-cell">
+                                <TableCell className="w-[140px] px-4 hidden md:table-cell">
                                   <div className="flex items-center gap-1">
                                     <Calendar className="h-3 w-3 text-muted-foreground" />
                                     <span>{format(user.createdAt, "MMM d, yyyy")}</span>
                                   </div>
                                 </TableCell>
-                                <TableCell className="w-2/12 px-4">
+                                <TableCell className="w-[100px] px-4">
                                   <div className="flex justify-center">
                                     <Badge
                                       variant={user.status === "active" ? "outline" : "secondary"}
@@ -1092,7 +1170,7 @@ const resetFilters = () => {
                                     </Badge>
                                   </div>
                                 </TableCell>
-                                <TableCell className="w-1/12 text-right px-4">
+                                <TableCell className="w-[60px] px-4 text-right">
                                   <DropdownMenu modal={true}>
                                     <DropdownMenuTrigger asChild>
                                       <Button 
@@ -1166,7 +1244,6 @@ const resetFilters = () => {
           </SidebarInset>
         </div>
 
-        {/* Confirmation Dialogs */}
         <Dialog open={showAddConfirm} onOpenChange={setShowAddConfirm}>
           <DialogContent
             className="sm:max-w-[500px]"
@@ -1287,7 +1364,6 @@ const resetFilters = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Cancel Confirmation Dialog */}
         <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
           <DialogContent
             className="sm:max-w-[500px]"
@@ -1308,7 +1384,6 @@ const resetFilters = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Reset Password Dialog */}
         <Dialog 
           open={showResetDialog}
           onOpenChange={(open) => !open && cleanupResetDialog()}
@@ -1386,7 +1461,6 @@ const resetFilters = () => {
           </DialogContent>
         </Dialog>
 
-        {/* User Activity Log Sheet */}
         <Sheet 
           open={activitySheetOpen} 
           onOpenChange={(open) => {
@@ -1400,7 +1474,6 @@ const resetFilters = () => {
             <SheetHeader className="space-y-4">
               {selectedUserActivity && (
                 <div className="space-y-4">
-                  {/* User Profile Header */}
                   <div className="flex items-start justify-between">
                     <div className="space-y-1.5">
                       <SheetTitle className="text-2xl font-semibold">
@@ -1435,7 +1508,6 @@ const resetFilters = () => {
                     </div>
                   </div>
 
-                  {/* Account Info */}
                   <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
                     <div className="p-4 space-y-3">
                       <h4 className="font-medium leading-none flex items-center gap-2">
@@ -1481,12 +1553,10 @@ const resetFilters = () => {
               <div className="space-y-8 pr-4 pb-8">
                 {activityGroups.map((group, groupIndex) => (
                   <div key={groupIndex} className="space-y-6">
-                    {/* Date header */}
                     <h4 className="text-sm font-medium text-muted-foreground sticky top-0 bg-background/95 backdrop-blur z-10 py-2 -mx-6 px-6">
                       {group.date}
                     </h4>
                     
-                    {/* Activities list */}
                     <div className="space-y-6 px-1">
                       {group.activities.map((activity, activityIndex) => (
                         <div 
@@ -1537,7 +1607,6 @@ const resetFilters = () => {
           </SheetContent>
         </Sheet>
 
-        {/* Password Configuration Dialog */}
         <Dialog 
           open={showPasswordConfig}
           onOpenChange={(open) => {
@@ -1662,6 +1731,119 @@ const resetFilters = () => {
                 disabled={isConfirmStep ? !adminPass.trim() : !tempPattern.trim()}
               >
                 {isConfirmStep ? "Confirm Change" : "Continue"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showExportConfirm} onOpenChange={setShowExportConfirm}>
+          <DialogContent
+            className="sm:max-w-[500px]"
+            aria-describedby="export-confirm-description"
+          >
+            <DialogHeader>
+              <DialogTitle>Export Selected Users</DialogTitle>
+              <DialogDescription id="export-confirm-description">
+                Select the fields you want to export for {selectedUsers.length} selected user{selectedUsers.length === 1 ? '' : 's'}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <Alert>
+                <InfoIcon className="h-4 w-4" />
+                <AlertTitle>Export Details</AlertTitle>
+                <AlertDescription>
+                  Choose which information to include in the export:
+                </AlertDescription>
+              </Alert>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="name" 
+                      checked={selectedFields.name}
+                      onCheckedChange={(checked) => 
+                        setSelectedFields(prev => ({ ...prev, name: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="name">Name</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="id" 
+                      checked={selectedFields.id}
+                      onCheckedChange={(checked) => 
+                        setSelectedFields(prev => ({ ...prev, id: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="id">ID Number</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="email" 
+                      checked={selectedFields.email}
+                      onCheckedChange={(checked) => 
+                        setSelectedFields(prev => ({ ...prev, email: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="email">Email</Label>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="role" 
+                      checked={selectedFields.role}
+                      onCheckedChange={(checked) => 
+                        setSelectedFields(prev => ({ ...prev, role: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="role">Role</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="status" 
+                      checked={selectedFields.status}
+                      onCheckedChange={(checked) => 
+                        setSelectedFields(prev => ({ ...prev, status: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="status">Status</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="createdDate" 
+                      checked={selectedFields.createdDate}
+                      onCheckedChange={(checked) => 
+                        setSelectedFields(prev => ({ ...prev, createdDate: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="createdDate">Created Date</Label>
+                  </div>
+                </div>
+              </div>
+
+              <Alert variant="destructive" className={cn(
+                "transition-all",
+                Object.values(selectedFields).every(v => !v) ? "opacity-100" : "opacity-0 hidden"
+              )}>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Please select at least one field to export.
+                </AlertDescription>
+              </Alert>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowExportConfirm(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={confirmExport}
+                disabled={Object.values(selectedFields).every(v => !v)}
+              >
+                Export to Excel
               </Button>
             </DialogFooter>
           </DialogContent>
